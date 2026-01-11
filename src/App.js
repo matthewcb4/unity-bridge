@@ -150,7 +150,7 @@ const App = () => {
         if (!user || !role || !db || !coupleCode) return;
 
         // Use coupleCode as the shared namespace for both partners
-        const sharedNamespace = `couples/${coupleCode}`;
+        const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
 
         const bridgeRef = collection(db, sharedNamespace, 'bridge_items');
         const unsubBridge = onSnapshot(bridgeRef, (snap) => {
@@ -242,7 +242,7 @@ const App = () => {
         if (!user || !coupleCode) return;
         const content = customContent || editableOutput;
         if (!content) return;
-        const sharedNamespace = `couples/${coupleCode}`;
+        const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
         await addDoc(collection(db, sharedNamespace, 'bridge_items'), {
             content, author: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
         });
@@ -253,7 +253,7 @@ const App = () => {
         if (!user || !coupleCode) return;
         const content = manualText || editableOutput || inputText;
         if (!content) return;
-        const sharedNamespace = `couples/${coupleCode}`;
+        const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
         await addDoc(collection(db, sharedNamespace, 'journals', role, 'entries'), {
             content, timestamp: serverTimestamp(), ...meta
         });
