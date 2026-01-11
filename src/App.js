@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-    Heart, Flame, Sparkles, MessageCircle, Copy, Check,
+    Heart, Flame, Sparkles, MessageCircle, Copy, Check, Share2,
     RefreshCcw, Settings, BookOpen, ChevronRight, User,
     Loader2, ShieldCheck as ShieldIcon, Users, AlertCircle, Hand,
     Bell, Zap, Lock, Globe, Save, Trash2, Edit3, Send,
@@ -248,7 +248,9 @@ const App = () => {
             alert('Please select your hub (Husband or Wife) first');
             return;
         }
-        const content = customContent || editableOutput;
+        const content = typeof (customContent || editableOutput) === 'string'
+            ? (customContent || editableOutput)
+            : String(customContent || editableOutput);
         if (!content) return;
         try {
             const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
@@ -458,9 +460,15 @@ const App = () => {
                                     </div>
                                     <div className="space-y-4">
                                         {(affectionType === 'words' ? (vaultMessages[vaultStyle] || []) : (touchIdeas[vaultStyle] || [])).map((msg, i) => (
-                                            <button key={i} onClick={() => affectionType === 'words' && copyToClipboard(msg, `v-${i}`)} className="w-full text-left p-6 rounded-[2rem] bg-slate-50 border border-slate-200 relative active:scale-[0.98] transition-all hover:bg-white hover:border-rose-200">
-                                                <p className="text-sm text-slate-700 italic font-medium pr-8 leading-relaxed">"{msg}"</p>
-                                            </button>
+                                            <div key={i} className="w-full p-6 rounded-[2rem] bg-slate-50 border border-slate-200 relative hover:bg-white hover:border-rose-200 transition-all">
+                                                <p className="text-sm text-slate-700 italic font-medium pr-12 leading-relaxed">"{msg}"</p>
+                                                <button
+                                                    onClick={() => copyToClipboard(msg, `v-${i}`)}
+                                                    className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 transition-all"
+                                                >
+                                                    {copiedId === `v-${i}` ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                                                </button>
+                                            </div>
                                         ))}
                                     </div>
                                     <button onClick={refreshVaults} className="w-full py-4 text-[10px] font-black uppercase text-slate-400 flex items-center justify-center gap-2"><RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> Get New Ideas</button>
@@ -543,7 +551,23 @@ const App = () => {
                                                             </span>
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-slate-600 italic leading-relaxed">"{item.content}"</p>
+                                                    <p className="text-xs text-slate-600 italic leading-relaxed mb-3">"{item.content}"</p>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => copyToClipboard(item.content, `j-${item.id}`)}
+                                                            className="flex-1 py-2 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl flex items-center justify-center gap-1 hover:bg-slate-200 transition-all"
+                                                        >
+                                                            {copiedId === `j-${item.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                                            {copiedId === `j-${item.id}` ? 'Copied!' : 'Copy'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => saveToBridge(item.content)}
+                                                            className="flex-1 py-2 text-[9px] font-bold text-white bg-green-600 rounded-xl flex items-center justify-center gap-1 hover:bg-green-700 transition-all"
+                                                        >
+                                                            <Share2 className="w-3 h-3" />
+                                                            Share to Bridge
+                                                        </button>
+                                                    </div>
                                                 </div>
                                             );
                                         })}
