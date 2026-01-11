@@ -52,6 +52,36 @@ try {
 
 const APP_ID = 'unity-bridge-live';
 
+// Journal type definitions with visual styling
+const JOURNAL_TYPES = {
+    feeling: { label: 'Feeling', color: 'text-purple-600', bg: 'bg-purple-100', border: 'border-purple-200', icon: Heart },
+    ai_log: { label: 'AI Log', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200', icon: Zap },
+    win: { label: 'Win', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200', icon: Sparkles },
+    thought: { label: 'Thought', color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200', icon: PenTool }
+};
+
+// Nudge prompts with time-appropriate content
+const NUDGE_DATA = {
+    Morning: {
+        time: '8:00 AM',
+        prompt: 'Start the day with gratitude',
+        suggestion: 'Share one thing you appreciate about your spouse',
+        icon: Coffee
+    },
+    Lunch: {
+        time: '12:00 PM',
+        prompt: 'Midday connection',
+        suggestion: 'Send a quick "thinking of you" message',
+        icon: MessageCircle
+    },
+    Evening: {
+        time: '7:00 PM',
+        prompt: 'End-of-day reflection',
+        suggestion: 'Share a highlight from your day together',
+        icon: Moon
+    }
+};
+
 // --- COMPONENT DEFINITIONS ---
 
 // Custom Icon Component (Moved up to avoid hoisting issues)
@@ -348,23 +378,52 @@ const App = () => {
                             {activeTab === 'journal' && (
                                 <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 p-6 space-y-6">
                                     <div className="grid grid-cols-2 gap-2">
-                                        {['feeling', 'ai_log', 'win', 'thought'].map(id => (
-                                            <button key={id} onClick={() => setJournalPrompt(id)} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl text-[9px] font-black uppercase text-slate-500 hover:bg-rose-50">{id}</button>
-                                        ))}
+                                        {['feeling', 'ai_log', 'win', 'thought'].map(id => {
+                                            const typeInfo = JOURNAL_TYPES[id];
+                                            const TypeIcon = typeInfo.icon;
+                                            const isActive = journalPrompt === id;
+                                            return (
+                                                <button
+                                                    key={id}
+                                                    onClick={() => setJournalPrompt(id)}
+                                                    className={`p-4 border rounded-2xl text-[9px] font-black uppercase flex items-center justify-center gap-2 transition-all ${isActive ? `${typeInfo.bg} ${typeInfo.border} ${typeInfo.color}` : 'bg-slate-50 border-slate-100 text-slate-500 hover:bg-slate-100'}`}
+                                                >
+                                                    <TypeIcon className="w-4 h-4" />
+                                                    {typeInfo.label}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                     {journalPrompt && (
-                                        <div className="p-6 bg-rose-50 border border-rose-100 rounded-3xl space-y-3">
-                                            <textarea id="studio-input" placeholder="Start typing..." className="w-full p-5 bg-white border border-rose-100 rounded-2xl text-xs min-h-[120px] outline-none" />
-                                            <button onClick={() => { const val = document.getElementById('studio-input').value; saveToJournal(val, { type: journalPrompt }); }} className="w-full bg-rose-600 text-white py-3 rounded-xl text-[10px] font-black">SAVE JOURNAL</button>
+                                        <div className={`p-6 ${JOURNAL_TYPES[journalPrompt].bg} border ${JOURNAL_TYPES[journalPrompt].border} rounded-3xl space-y-3`}>
+                                            <div className={`flex items-center gap-2 ${JOURNAL_TYPES[journalPrompt].color} mb-2`}>
+                                                {(() => { const Icon = JOURNAL_TYPES[journalPrompt].icon; return <Icon className="w-5 h-5" />; })()}
+                                                <span className="text-sm font-black uppercase tracking-wider">Recording {JOURNAL_TYPES[journalPrompt].label}</span>
+                                            </div>
+                                            <textarea id="studio-input" placeholder={`What ${JOURNAL_TYPES[journalPrompt].label.toLowerCase()} would you like to capture?`} className={`w-full p-5 bg-white border ${JOURNAL_TYPES[journalPrompt].border} rounded-2xl text-xs min-h-[120px] outline-none focus:ring-2 focus:ring-opacity-50`} />
+                                            <button onClick={() => { const val = document.getElementById('studio-input').value; saveToJournal(val, { type: journalPrompt }); }} className={`w-full ${JOURNAL_TYPES[journalPrompt].color.replace('text-', 'bg-').replace('-600', '-600')} text-white py-3 rounded-xl text-[10px] font-black shadow-lg`} style={{ backgroundColor: journalPrompt === 'feeling' ? '#9333ea' : journalPrompt === 'ai_log' ? '#2563eb' : journalPrompt === 'win' ? '#16a34a' : '#d97706' }}>SAVE {JOURNAL_TYPES[journalPrompt].label.toUpperCase()}</button>
                                         </div>
                                     )}
                                     <div className="space-y-4 pt-4 border-t border-slate-100">
-                                        {journalItems.map(item => (
-                                            <div key={item.id} className="p-5 bg-white border border-slate-100 rounded-3xl shadow-sm">
-                                                <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleDateString() : 'Now'}</span>
-                                                <p className="text-xs text-slate-600 italic leading-relaxed mt-1">"{item.content}"</p>
-                                            </div>
-                                        ))}
+                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Your Entries</h3>
+                                        {journalItems.map(item => {
+                                            const typeInfo = item.type ? JOURNAL_TYPES[item.type] : null;
+                                            const TypeIcon = typeInfo?.icon;
+                                            return (
+                                                <div key={item.id} className={`p-5 bg-white border rounded-3xl shadow-sm ${typeInfo ? typeInfo.border : 'border-slate-100'}`}>
+                                                    <div className="flex items-center justify-between mb-2">
+                                                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleDateString() : 'Now'}</span>
+                                                        {typeInfo && (
+                                                            <span className={`flex items-center gap-1 text-[8px] font-black uppercase px-2 py-1 rounded-full ${typeInfo.bg} ${typeInfo.color}`}>
+                                                                <TypeIcon className="w-3 h-3" />
+                                                                {typeInfo.label}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    <p className="text-xs text-slate-600 italic leading-relaxed">"{item.content}"</p>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 </div>
                             )}
@@ -404,17 +463,42 @@ const App = () => {
                             <div className="text-center space-y-4 pt-4">
                                 <div className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl"><Bell className="w-12 h-12 text-rose-600" /></div>
                                 <h2 className="text-4xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
+                                <p className="text-sm text-slate-400">Set daily reminders to nurture your connection</p>
                             </div>
                             <div className="space-y-4">
-                                {['Morning', 'Lunch', 'Evening'].map(time => (
-                                    <div key={time} className="p-8 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl flex items-center justify-between">
-                                        <div><p className="text-lg font-black text-slate-800 tracking-tight">{time} Check-in</p></div>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => window.open(`https://calendar.google.com/`, '_blank')} className="p-4 bg-slate-50 rounded-2xl text-[10px] font-black uppercase text-slate-500">Google</button>
-                                            <button onClick={() => copyToClipboard(`${time} Unity Nudge Daily`, 'n')} className="p-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase">iPhone</button>
+                                {['Morning', 'Lunch', 'Evening'].map(time => {
+                                    const nudge = NUDGE_DATA[time];
+                                    const NudgeIcon = nudge.icon;
+                                    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}\n\nOpen Unity Bridge to connect with your spouse.`)}&recur=RRULE:FREQ=DAILY`;
+                                    const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
+                                    return (
+                                        <div key={time} className="p-6 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl space-y-4">
+                                            <div className="flex items-start gap-4">
+                                                <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center shrink-0">
+                                                    <NudgeIcon className="w-6 h-6 text-rose-600" />
+                                                </div>
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-lg font-black text-slate-800 tracking-tight">{time} Check-in</p>
+                                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{nudge.time}</span>
+                                                    </div>
+                                                    <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
+                                                    <p className="text-xs text-slate-500 mt-1 italic">"{nudge.suggestion}"</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex gap-2 pt-2 border-t border-slate-50">
+                                                <button onClick={() => window.open(calendarUrl, '_blank')} className="flex-1 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-[10px] font-black uppercase text-blue-600 flex items-center justify-center gap-2 transition-all">
+                                                    <Calendar className="w-4 h-4" />
+                                                    Add to Google
+                                                </button>
+                                                <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
+                                                    {copiedId === `n-${time}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                                    {copiedId === `n-${time}` ? 'Copied!' : 'Copy for iPhone'}
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
