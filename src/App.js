@@ -316,6 +316,29 @@ const App = () => {
         setIsGenerating(false);
     };
 
+    const generateDateNight = async (budget = 'moderate') => {
+        setIsGenerating(true);
+        const partnerName = role === 'his' ? (wifeName || 'Wife') : (husbandName || 'Husband');
+        const partnerLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
+        const budgetDesc = budget === 'free' ? 'completely free, no-cost' : budget === 'cheap' ? 'under $30' : budget === 'moderate' ? '$30-$75' : 'special occasion, $75+';
+
+        const systemPrompt = `You are a romantic date planning expert. Generate 3 creative date night ideas for a couple.
+        
+Partner's love language: ${partnerLanguage}
+Budget: ${budgetDesc}
+Partner's name: ${partnerName}
+
+Return JSON: { "dates": [{"title": "short title", "description": "2 sentences describing the date", "cost": "estimated cost", "tip": "one personalized tip based on love language"}] }`;
+
+        const result = await callGemini(systemPrompt);
+        if (result && result.dates) {
+            setDateIdeas(result.dates);
+        } else {
+            alert('Could not generate date ideas. Please try again.');
+        }
+        setIsGenerating(false);
+    };
+
     const clearBridgeView = () => {
         if (window.confirm('Clear your bridge history? (This only clears your view, not your partner\'s)')) {
             const now = Date.now();
@@ -642,6 +665,76 @@ const App = () => {
                         </div>
                     )}
 
+                    {view === 'date' && (
+                        <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-4 pt-4">
+                                <div className="w-24 h-24 bg-pink-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl">
+                                    <Heart className="w-12 h-12 text-pink-600" />
+                                </div>
+                                <h2 className="text-4xl font-black text-slate-800 tracking-tighter italic">Date Night</h2>
+                                <p className="text-sm text-slate-400">AI-generated date ideas just for you two</p>
+                            </div>
+
+                            <div className="bg-white rounded-[3rem] shadow-xl border border-pink-100 p-6 space-y-4">
+                                <h3 className="text-xs font-black text-pink-600 uppercase tracking-widest text-center">Select Your Budget</h3>
+                                <div className="grid grid-cols-4 gap-2">
+                                    {[{ id: 'free', label: 'Free', emoji: '🆓' }, { id: 'cheap', label: '<$30', emoji: '💵' }, { id: 'moderate', label: '$30-75', emoji: '💳' }, { id: 'splurge', label: '$75+', emoji: '✨' }].map(budget => (
+                                        <button
+                                            key={budget.id}
+                                            onClick={() => generateDateNight(budget.id)}
+                                            disabled={isGenerating}
+                                            className="p-4 bg-slate-50 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 rounded-2xl text-center transition-all disabled:opacity-50"
+                                        >
+                                            <span className="text-2xl block mb-1">{budget.emoji}</span>
+                                            <span className="text-[9px] font-bold text-slate-600">{budget.label}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                                {isGenerating && (
+                                    <div className="text-center py-4 text-pink-500">
+                                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                                        <p className="text-xs font-bold">Planning romantic ideas...</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {dateIdeas.length > 0 && (
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-black text-slate-800 px-2">Your Date Ideas</h3>
+                                    {dateIdeas.map((date, i) => (
+                                        <div key={i} className="bg-white rounded-[2.5rem] shadow-xl border border-pink-100 p-6 space-y-4">
+                                            <div className="flex items-start justify-between">
+                                                <h4 className="text-lg font-black text-slate-800">{date.title}</h4>
+                                                <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-3 py-1 rounded-full">{date.cost}</span>
+                                            </div>
+                                            <p className="text-sm text-slate-600 leading-relaxed">{date.description}</p>
+                                            <div className="p-4 bg-gradient-to-r from-pink-50 to-rose-50 rounded-2xl border border-pink-100">
+                                                <p className="text-[10px] font-black text-pink-600 uppercase mb-1">💡 Love Language Tip</p>
+                                                <p className="text-xs text-slate-700 italic">{date.tip}</p>
+                                            </div>
+                                            <div className="flex gap-2">
+                                                <button
+                                                    onClick={() => copyToClipboard(`${date.title}: ${date.description}`, `d-${i}`)}
+                                                    className="flex-1 py-3 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl flex items-center justify-center gap-1"
+                                                >
+                                                    {copiedId === `d-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                                    {copiedId === `d-${i}` ? 'Copied!' : 'Copy'}
+                                                </button>
+                                                <button
+                                                    onClick={() => saveToBridge(`Date idea: ${date.title} - ${date.description}`)}
+                                                    className="flex-1 py-3 text-[9px] font-bold text-white bg-pink-600 rounded-xl flex items-center justify-center gap-1"
+                                                >
+                                                    <Share2 className="w-3 h-3" />
+                                                    Share to Bridge
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {view === 'nudge' && (
                         <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4">
                             <div className="text-center space-y-4 pt-4">
@@ -697,6 +790,9 @@ const App = () => {
                     </button>
                     <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
                         <ShieldCheckComp className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Bridge</span>
+                    </button>
+                    <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <Calendar className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Date</span>
                     </button>
                     <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
                         <Bell className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Nudge</span>
