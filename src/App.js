@@ -159,7 +159,7 @@ const App = () => {
         }, (err) => console.error("Bridge Sync Error:", err));
 
         // Journal uses coupleCode + role so each partner has their own journal that syncs across devices
-        const journalRef = collection(db, sharedNamespace, 'journals', role);
+        const journalRef = collection(db, sharedNamespace, 'journals', role, 'entries');
         const unsubJournal = onSnapshot(journalRef, (snap) => {
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setJournalItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
@@ -254,7 +254,7 @@ const App = () => {
         const content = manualText || editableOutput || inputText;
         if (!content) return;
         const sharedNamespace = `couples/${coupleCode}`;
-        await addDoc(collection(db, sharedNamespace, 'journals', role), {
+        await addDoc(collection(db, sharedNamespace, 'journals', role, 'entries'), {
             content, timestamp: serverTimestamp(), ...meta
         });
         setEditableOutput(''); setInputText(''); setJournalPrompt(null);
