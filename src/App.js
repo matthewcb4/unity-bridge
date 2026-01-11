@@ -28,7 +28,7 @@ const FIREBASE_CONFIG = {
     measurementId: "G-GJCWR2TZFN"
 };
 
-const GEMINI_API_KEY = "AIzaSyBUFISsp0ARHN7u3014iq7aFJPC6bmOhmQ";
+// API key is now securely stored in Cloud Function - no longer exposed in frontend
 
 // --- SINGLETON INITIALIZATION ---
 let app, auth, db, analytics;
@@ -181,27 +181,20 @@ const App = () => {
     // --- ACTIONS ---
 
     const callGemini = async (prompt) => {
-        if (!GEMINI_API_KEY) { alert("Missing API Key"); return null; }
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${GEMINI_API_KEY}`, {
+            // Call our secure Cloud Function instead of the direct API
+            const response = await fetch('https://us-central1-unity-bridge-45617.cloudfunctions.net/callGemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: "application/json" }
-                })
+                body: JSON.stringify({ prompt })
             });
             if (!response.ok) {
                 const errorData = await response.json();
-                console.error("Gemini API Error:", response.status, errorData);
+                console.error("AI Error:", response.status, errorData);
                 return null;
             }
             const data = await response.json();
-            if (!data.candidates || !data.candidates[0]) {
-                console.error("No candidates in response:", data);
-                return null;
-            }
-            return JSON.parse(data.candidates[0].content.parts[0].text);
+            return data.result;
         } catch (err) {
             console.error("AI Error", err);
             return null;
