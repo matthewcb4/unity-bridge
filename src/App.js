@@ -178,10 +178,22 @@ const App = () => {
             setJournalItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
         }, (err) => console.error("Journal Sync Error:", err));
 
+        // Listen for shared settings (love languages, names) - both partners can edit
+        const settingsRef = doc(db, sharedNamespace, 'settings');
+        const unsubSettings = onSnapshot(settingsRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.hisLoveLanguage) setHisLoveLanguage(data.hisLoveLanguage);
+                if (data.herLoveLanguage) setHerLoveLanguage(data.herLoveLanguage);
+                if (data.husbandName) setHusbandName(data.husbandName);
+                if (data.wifeName) setWifeName(data.wifeName);
+            }
+        }, (err) => console.error("Settings Sync Error:", err));
+
         // Initial content load
         refreshVaults();
 
-        return () => { unsubBridge(); unsubJournal(); };
+        return () => { unsubBridge(); unsubJournal(); unsubSettings(); };
     }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
@@ -289,6 +301,18 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["idea1", "idea2", "idea3
         } catch (err) {
             console.error('Save error:', err);
             alert('Failed to save. Please try again.');
+        }
+    };
+
+    // Save shared settings to Firestore (love languages and names)
+    const saveSettings = async (updates) => {
+        if (!coupleCode || !db) return;
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            const settingsRef = doc(db, sharedNamespace, 'settings');
+            await setDoc(settingsRef, updates, { merge: true });
+        } catch (err) {
+            console.error('Settings save error:', err);
         }
     };
 
@@ -419,11 +443,11 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-blue-500 uppercase ml-2 tracking-widest">Husband</label>
-                        <input value={husbandName} onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-blue-300 outline-none shadow-inner" />
+                        <input value={husbandName} onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-blue-300 outline-none shadow-inner" />
                     </div>
                     <div className="space-y-2">
                         <label className="text-[10px] font-black text-rose-500 uppercase ml-2 tracking-widest">Wife</label>
-                        <input value={wifeName} onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-rose-300 outline-none shadow-inner" />
+                        <input value={wifeName} onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-rose-300 outline-none shadow-inner" />
                     </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
@@ -431,7 +455,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         <label className="text-[10px] font-black text-blue-400 uppercase ml-2 tracking-widest">His Love Language</label>
                         <select
                             value={hisLoveLanguage}
-                            onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); }}
+                            onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
                             className="w-full bg-blue-50 p-4 rounded-2xl text-xs border border-blue-100 outline-none"
                         >
                             <option>Physical Touch</option>
@@ -445,7 +469,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         <label className="text-[10px] font-black text-rose-400 uppercase ml-2 tracking-widest">Her Love Language</label>
                         <select
                             value={herLoveLanguage}
-                            onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); }}
+                            onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
                             className="w-full bg-rose-50 p-4 rounded-2xl text-xs border border-rose-100 outline-none"
                         >
                             <option>Words of Affirmation</option>
