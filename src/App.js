@@ -123,6 +123,12 @@ const App = () => {
     const [aiError, setAiError] = useState(null);
     const [loadingMessage, setLoadingMessage] = useState('');
 
+    // Bridge clear timestamp (per user)
+    const [bridgeClearedAt, setBridgeClearedAt] = useState(() => {
+        const stored = localStorage.getItem(`bridge_cleared_${role}`);
+        return stored ? parseInt(stored) : 0;
+    });
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -309,6 +315,21 @@ const App = () => {
         }
         setIsGenerating(false);
     };
+
+    const clearBridgeView = () => {
+        if (window.confirm('Clear your bridge history? (This only clears your view, not your partner\'s)')) {
+            const now = Date.now();
+            setBridgeClearedAt(now);
+            localStorage.setItem(`bridge_cleared_${role}`, now.toString());
+        }
+    };
+
+    // Filter bridge items based on user's clear timestamp
+    const visibleBridgeItems = bridgeItems.filter(item => {
+        if (!bridgeClearedAt) return true;
+        const itemTimestamp = item.timestamp?.seconds ? item.timestamp.seconds * 1000 : 0;
+        return itemTimestamp > bridgeClearedAt;
+    });
 
     const copyToClipboard = (text, id) => {
         const el = document.createElement('textarea'); el.value = text; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopiedId(id); setTimeout(() => setCopiedId(null), 2000);
@@ -594,13 +615,29 @@ const App = () => {
                                 )}
                             </div>
                             <div className="space-y-4">
-                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic px-4">Shared History</h2>
-                                {bridgeItems.map(item => (
-                                    <div key={item.id} className={`p-8 rounded-[3rem] border-2 relative ${item.author === role ? 'bg-slate-50 border-slate-100' : 'bg-rose-50/50 border-rose-100'}`}>
-                                        <div className="flex justify-between mb-3"><span className={`text-[10px] font-black uppercase tracking-widest ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span></div>
-                                        <p className="text-base text-slate-700 italic font-medium leading-relaxed">"{item.content}"</p>
+                                <div className="flex justify-between items-center px-4">
+                                    <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Shared History</h2>
+                                    <button
+                                        onClick={clearBridgeView}
+                                        className="text-[9px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-red-50 hover:text-red-500 transition-all"
+                                    >
+                                        <Trash2 className="w-3 h-3" />
+                                        Clear My View
+                                    </button>
+                                </div>
+                                {visibleBridgeItems.length === 0 ? (
+                                    <div className="text-center py-12 text-slate-400">
+                                        <p className="text-sm">No messages yet</p>
+                                        <p className="text-xs mt-1">Share something from the hub to start!</p>
                                     </div>
-                                ))}
+                                ) : (
+                                    visibleBridgeItems.map(item => (
+                                        <div key={item.id} className={`p-8 rounded-[3rem] border-2 relative ${item.author === role ? 'bg-slate-50 border-slate-100' : 'bg-rose-50/50 border-rose-100'}`}>
+                                            <div className="flex justify-between mb-3"><span className={`text-[10px] font-black uppercase tracking-widest ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span></div>
+                                            <p className="text-base text-slate-700 italic font-medium leading-relaxed">"{item.content}"</p>
+                                        </div>
+                                    ))
+                                )}
                             </div>
                         </div>
                     )}
