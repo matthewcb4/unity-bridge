@@ -171,7 +171,7 @@ const App = () => {
     const callGemini = async (prompt) => {
         if (!GEMINI_API_KEY) { alert("Missing API Key"); return null; }
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -179,7 +179,16 @@ const App = () => {
                     generationConfig: { responseMimeType: "application/json" }
                 })
             });
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("Gemini API Error:", response.status, errorData);
+                return null;
+            }
             const data = await response.json();
+            if (!data.candidates || !data.candidates[0]) {
+                console.error("No candidates in response:", data);
+                return null;
+            }
             return JSON.parse(data.candidates[0].content.parts[0].text);
         } catch (err) {
             console.error("AI Error", err);
