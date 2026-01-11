@@ -28,7 +28,7 @@ const FIREBASE_CONFIG = {
     measurementId: "G-GJCWR2TZFN"
 };
 
-const GEMINI_API_KEY = "AIzaSyBeXevp3C3TwFRpJCbnjUXllSG5YH1ok9A";
+const GEMINI_API_KEY = "AIzaSyBUFISsp0ARHN7u3014iq7aFJPC6bmOhmQ";
 
 // --- SINGLETON INITIALIZATION ---
 let app, auth, db, analytics;
