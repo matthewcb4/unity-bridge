@@ -100,6 +100,7 @@ const App = () => {
 
     const [wifeName, setWifeName] = useState(localStorage.getItem('wife_name') || '');
     const [husbandName, setHusbandName] = useState(localStorage.getItem('husband_name') || '');
+    const [coupleCode, setCoupleCode] = useState(localStorage.getItem('couple_code') || '');
 
     const [bridgeItems, setBridgeItems] = useState([]);
     const [journalItems, setJournalItems] = useState([]);
@@ -146,15 +147,19 @@ const App = () => {
 
     // Data Listeners
     useEffect(() => {
-        if (!user || !role || !db) return;
+        if (!user || !role || !db || !coupleCode) return;
 
-        const bridgeRef = collection(db, 'artifacts', APP_ID, 'public', 'data', 'bridge_items');
+        // Use coupleCode as the shared namespace for both partners
+        const sharedNamespace = `couples/${coupleCode}`;
+
+        const bridgeRef = collection(db, sharedNamespace, 'bridge_items');
         const unsubBridge = onSnapshot(bridgeRef, (snap) => {
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setBridgeItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
         }, (err) => console.error("Bridge Sync Error:", err));
 
-        const journalRef = collection(db, 'artifacts', APP_ID, 'users', user.uid, 'private_journal');
+        // Journal uses coupleCode + role so each partner has their own journal that syncs across devices
+        const journalRef = collection(db, sharedNamespace, 'journals', role);
         const unsubJournal = onSnapshot(journalRef, (snap) => {
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setJournalItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
@@ -164,7 +169,7 @@ const App = () => {
         refreshVaults();
 
         return () => { unsubBridge(); unsubJournal(); };
-    }, [user, role]);
+    }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
 
@@ -234,20 +239,22 @@ const App = () => {
     };
 
     const saveToBridge = async (customContent = null) => {
-        if (!user) return;
+        if (!user || !coupleCode) return;
         const content = customContent || editableOutput;
         if (!content) return;
-        await addDoc(collection(db, 'artifacts', APP_ID, 'public', 'data', 'bridge_items'), {
+        const sharedNamespace = `couples/${coupleCode}`;
+        await addDoc(collection(db, sharedNamespace, 'bridge_items'), {
             content, author: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
         });
         setEditableOutput(''); setInputText('');
     };
 
     const saveToJournal = async (manualText = null, meta = {}) => {
-        if (!user) return;
+        if (!user || !coupleCode) return;
         const content = manualText || editableOutput || inputText;
         if (!content) return;
-        await addDoc(collection(db, 'artifacts', APP_ID, 'users', user.uid, 'private_journal'), {
+        const sharedNamespace = `couples/${coupleCode}`;
+        await addDoc(collection(db, sharedNamespace, 'journals', role), {
             content, timestamp: serverTimestamp(), ...meta
         });
         setEditableOutput(''); setInputText(''); setJournalPrompt(null);
@@ -304,17 +311,36 @@ const App = () => {
                         <input value={wifeName} onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-rose-300 outline-none shadow-inner" />
                     </div>
                 </div>
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-[10px] font-black text-purple-500 uppercase ml-2 tracking-widest flex items-center gap-2">
+                        <Lock className="w-3 h-3" /> Couple Code
+                    </label>
+                    <input
+                        value={coupleCode}
+                        onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
+                        placeholder="Enter a shared code (e.g. smith2024)"
+                        className="w-full bg-purple-50 p-5 rounded-[2rem] text-sm border border-purple-100 focus:border-purple-300 outline-none shadow-inner text-center font-mono tracking-widest"
+                    />
+                    <p className="text-[9px] text-slate-400 text-center px-4">Use the same code on all your devices to sync your data</p>
+                </div>
             </div>
 
             <div className="grid grid-cols-1 w-full gap-5">
-                <button onClick={() => { setRole('his'); setView('hub'); setAffectionType('words'); }} className="p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between active:scale-95 transition-all">
+                <button
+                    onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); setAffectionType('words'); } }}
+                    className={`p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50 cursor-not-allowed'}`}
+                >
                     <div className="text-left"><h3 className="text-2xl font-black text-slate-800">Husband's Hub</h3><p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">Nurturing her needs</p></div>
                     <div className="w-14 h-14 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner"><MessageCircle className="w-7 h-7" /></div>
                 </button>
-                <button onClick={() => { setRole('hers'); setView('hub'); setAffectionType('physical'); }} className="p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between active:scale-95 transition-all">
+                <button
+                    onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); setAffectionType('physical'); } }}
+                    className={`p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50 cursor-not-allowed'}`}
+                >
                     <div className="text-left"><h3 className="text-2xl font-black text-slate-800">Wife's Hub</h3><p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest mt-1">Nurturing his needs</p></div>
                     <div className="w-14 h-14 rounded-3xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-inner"><Hand className="w-7 h-7" /></div>
                 </button>
+                {!coupleCode && <p className="text-[10px] text-purple-500 text-center font-bold">Enter a couple code above to get started</p>}
             </div>
         </div>
     );
