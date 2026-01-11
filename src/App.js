@@ -116,6 +116,13 @@ const App = () => {
     const [copiedId, setCopiedId] = useState(null);
     const [journalPrompt, setJournalPrompt] = useState(null);
 
+    // AI Enhancement States
+    const [hisLoveLanguage, setHisLoveLanguage] = useState(localStorage.getItem('his_love_language') || 'Physical Touch');
+    const [herLoveLanguage, setHerLoveLanguage] = useState(localStorage.getItem('her_love_language') || 'Words of Affirmation');
+    const [dateIdeas, setDateIdeas] = useState([]);
+    const [aiError, setAiError] = useState(null);
+    const [loadingMessage, setLoadingMessage] = useState('');
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -206,15 +213,16 @@ const App = () => {
         setIsRefreshing(true);
         const sender = role === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
         const receiver = role === 'his' ? (wifeName || 'Wife') : (husbandName || 'Husband');
+        const partnerLoveLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
         const primaryGoal = role === 'his'
-            ? `Help ${sender} (Husband) meet the needs of ${receiver} (Wife). Her primary love language is WORDS OF AFFIRMATION and FLIRTING.`
-            : `Help ${sender} (Wife) meet the needs of ${receiver} (Husband). His primary love language is PHYSICAL TOUCH and INTIMACY.`;
+            ? `Help ${sender} (Husband) meet the needs of ${receiver} (Wife). Her primary love language is ${herLoveLanguage}. Generate personalized suggestions.`
+            : `Help ${sender} (Wife) meet the needs of ${receiver} (Husband). His primary love language is ${hisLoveLanguage}. Generate personalized suggestions.`;
 
-        const systemPrompt = `You are a relationship expert. ${primaryGoal} Return ONLY JSON: { "words": { "gentle": [], "flirty": [], "appreciative": [] }, "touch": { "daily": [], "sensual": [], "initiation": [] } }`;
+        const systemPrompt = `You are a relationship expert. ${primaryGoal} Generate 3 items per category. Return ONLY JSON: { "words": { "gentle": ["item1", "item2", "item3"], "flirty": ["item1", "item2", "item3"], "appreciative": ["item1", "item2", "item3"] }, "touch": { "daily": ["item1", "item2", "item3"], "sensual": ["item1", "item2", "item3"], "initiation": ["item1", "item2", "item3"] } }`;
         const result = await callGemini(systemPrompt);
         if (result) {
-            setVaultMessages(result.words);
-            setTouchIdeas(result.touch);
+            setVaultMessages(result.words || { gentle: [], flirty: [], appreciative: [] });
+            setTouchIdeas(result.touch || { daily: [], sensual: [], initiation: [] });
         }
         setIsRefreshing(false);
     };
@@ -239,25 +247,72 @@ const App = () => {
     };
 
     const saveToBridge = async (customContent = null) => {
-        if (!user || !coupleCode) return;
+        if (!user || !coupleCode) {
+            alert('Please set a couple code on the home screen first');
+            return;
+        }
+        if (!role) {
+            alert('Please select your hub (Husband or Wife) first');
+            return;
+        }
         const content = customContent || editableOutput;
         if (!content) return;
-        const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-        await addDoc(collection(db, sharedNamespace, 'bridge_items'), {
-            content, author: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
-        });
-        setEditableOutput(''); setInputText('');
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            await addDoc(collection(db, sharedNamespace, 'bridge_items'), {
+                content, author: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
+            });
+            setEditableOutput(''); setInputText('');
+            alert('Shared to bridge! ✓');
+        } catch (err) {
+            console.error('Save error:', err);
+            alert('Failed to save. Please try again.');
+        }
     };
 
     const saveToJournal = async (manualText = null, meta = {}) => {
-        if (!user || !coupleCode) return;
+        if (!user || !coupleCode) {
+            alert('Please set a couple code on the home screen first');
+            return;
+        }
+        if (!role) {
+            alert('Please select your hub (Husband or Wife) first');
+            return;
+        }
         const content = manualText || editableOutput || inputText;
-        if (!content) return;
-        const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-        await addDoc(collection(db, sharedNamespace, 'journals', role, 'entries'), {
-            content, timestamp: serverTimestamp(), ...meta
-        });
-        setEditableOutput(''); setInputText(''); setJournalPrompt(null);
+        if (!content) {
+            alert('Please enter some text first');
+            return;
+        }
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            await addDoc(collection(db, sharedNamespace, 'journals', role, 'entries'), {
+                content, timestamp: serverTimestamp(), ...meta
+            });
+            setEditableOutput(''); setInputText(''); setJournalPrompt(null);
+            alert('Saved to journal! ✓');
+        } catch (err) {
+            console.error('Journal save error:', err);
+            alert('Failed to save. Please try again.');
+        }
+    };
+
+    const generateJournalInsights = async () => {
+        if (journalItems.length === 0) {
+            alert('Add some journal entries first to get insights');
+            return;
+        }
+        setIsGenerating(true);
+        const recentEntries = journalItems.slice(0, 5).map(j => `[${j.type || 'entry'}]: ${j.content}`).join('\n');
+        const partnerName = role === 'his' ? (wifeName || 'your wife') : (husbandName || 'your husband');
+        const systemPrompt = `You are a relationship counselor. Based on these recent journal entries:\n${recentEntries}\n\nProvide personalized communication suggestions for talking with ${partnerName}. Return JSON: { "insights": "brief analysis of patterns", "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"] }`;
+        const result = await callGemini(systemPrompt);
+        if (result) {
+            alert(`💡 Insights: ${result.insights}\n\n✨ Suggestions:\n• ${result.suggestions.join('\n• ')}`);
+        } else {
+            alert('Could not generate insights. Please try again.');
+        }
+        setIsGenerating(false);
     };
 
     const copyToClipboard = (text, id) => {
@@ -311,6 +366,36 @@ const App = () => {
                         <input value={wifeName} onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-rose-300 outline-none shadow-inner" />
                     </div>
                 </div>
+                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-blue-400 uppercase ml-2 tracking-widest">His Love Language</label>
+                        <select
+                            value={hisLoveLanguage}
+                            onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); }}
+                            className="w-full bg-blue-50 p-4 rounded-2xl text-xs border border-blue-100 outline-none"
+                        >
+                            <option>Physical Touch</option>
+                            <option>Words of Affirmation</option>
+                            <option>Quality Time</option>
+                            <option>Acts of Service</option>
+                            <option>Receiving Gifts</option>
+                        </select>
+                    </div>
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-rose-400 uppercase ml-2 tracking-widest">Her Love Language</label>
+                        <select
+                            value={herLoveLanguage}
+                            onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); }}
+                            className="w-full bg-rose-50 p-4 rounded-2xl text-xs border border-rose-100 outline-none"
+                        >
+                            <option>Words of Affirmation</option>
+                            <option>Physical Touch</option>
+                            <option>Quality Time</option>
+                            <option>Acts of Service</option>
+                            <option>Receiving Gifts</option>
+                        </select>
+                    </div>
+                </div>
                 <div className="space-y-2 pt-2 border-t border-slate-100">
                     <label className="text-[10px] font-black text-purple-500 uppercase ml-2 tracking-widest flex items-center gap-2">
                         <Lock className="w-3 h-3" /> Couple Code
@@ -362,7 +447,7 @@ const App = () => {
                     {view === 'hub' && (
                         <div className="space-y-6">
                             <div className="flex bg-white/80 backdrop-blur-md p-1.5 rounded-2xl border border-slate-100 shadow-sm sticky top-0 z-10">
-                                {['affection', 'conflict', 'journal'].map(tab => (
+                                {['affection', 'communicate', 'journal'].map(tab => (
                                     <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === tab ? 'bg-rose-600 text-white shadow-lg' : 'text-slate-400'}`}>{tab}</button>
                                 ))}
                             </div>
@@ -389,9 +474,9 @@ const App = () => {
                                 </div>
                             )}
 
-                            {activeTab === 'conflict' && (
+                            {activeTab === 'communicate' && (
                                 <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-50 p-6 space-y-6">
-                                    <div className="flex items-center gap-3"><AlertCircle className="w-5 h-5 text-orange-500" /><h2 className="font-black text-slate-800 text-sm uppercase">Rephrasing</h2></div>
+                                    <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5 text-blue-500" /><h2 className="font-black text-slate-800 text-sm uppercase">Communicate Better</h2></div>
                                     <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Draft your thought..." className="w-full p-5 bg-slate-50 border border-slate-200 rounded-3xl text-sm min-h-[140px] outline-none focus:ring-4 focus:ring-orange-50" />
                                     <button onClick={translateMessage} disabled={isGenerating || !inputText} className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl shadow-xl flex items-center justify-center gap-2">
                                         {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : "TRANSLATE"}
@@ -440,7 +525,17 @@ const App = () => {
                                         </div>
                                     )}
                                     <div className="space-y-4 pt-4 border-t border-slate-100">
-                                        <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Your Entries</h3>
+                                        <div className="flex justify-between items-center">
+                                            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Your Entries</h3>
+                                            <button
+                                                onClick={generateJournalInsights}
+                                                disabled={isGenerating || journalItems.length === 0}
+                                                className="text-[9px] font-black text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-purple-100 transition-all disabled:opacity-50"
+                                            >
+                                                <Sparkles className="w-3 h-3" />
+                                                {isGenerating ? 'Analyzing...' : 'Get Insights'}
+                                            </button>
+                                        </div>
                                         {journalItems.map(item => {
                                             const typeInfo = item.type ? JOURNAL_TYPES[item.type] : null;
                                             const TypeIcon = typeInfo?.icon;

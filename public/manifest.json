@@ -1,0 +1,17 @@
+{
+    "name": "Unity Bridge",
+    "short_name": "Unity",
+    "description": "Relationship OS for couples",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#FDF8F8",
+    "theme_color": "#e11d48",
+    "icons": [
+        {
+            "src": "/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ]
+}
