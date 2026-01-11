@@ -795,7 +795,25 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                     className="flex-1 py-3 text-[9px] font-bold text-white bg-pink-600 rounded-xl flex items-center justify-center gap-1"
                                                 >
                                                     <Share2 className="w-3 h-3" />
-                                                    Share to Bridge
+                                                    Share
+                                                </button>
+                                            </div>
+                                            <div className="flex gap-2 pt-2 border-t border-slate-100">
+                                                <a
+                                                    href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Date Night: ${date.title}`)}&details=${encodeURIComponent(`${date.description}\n\n💡 Tip: ${date.tip}\n\nBudget: ${date.cost}`)}`}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex-1 py-3 text-[9px] font-bold text-white bg-blue-600 rounded-xl flex items-center justify-center gap-1"
+                                                >
+                                                    <Calendar className="w-3 h-3" />
+                                                    Google Calendar
+                                                </a>
+                                                <button
+                                                    onClick={() => copyToClipboard(`Date Night: ${date.title}\n${date.description}\n\n💡 ${date.tip}\n\nBudget: ${date.cost}`, `cal-${i}`)}
+                                                    className="flex-1 py-3 text-[9px] font-bold text-slate-600 bg-slate-100 rounded-xl flex items-center justify-center gap-1"
+                                                >
+                                                    {copiedId === `cal-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Calendar className="w-3 h-3" />}
+                                                    {copiedId === `cal-${i}` ? 'Copied!' : 'iPhone Copy'}
                                                 </button>
                                             </div>
                                         </div>
