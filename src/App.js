@@ -96,7 +96,7 @@ const App = () => {
     const [view, setView] = useState('home');
     const [role, setRole] = useState(localStorage.getItem('user_role') || null);
     const [activeTab, setActiveTab] = useState('affection');
-    const [affectionType, setAffectionType] = useState('words');
+    const [affectionType, setAffectionType] = useState('primary');
 
     const [wifeName, setWifeName] = useState(localStorage.getItem('wife_name') || '');
     const [husbandName, setHusbandName] = useState(localStorage.getItem('husband_name') || '');
@@ -212,16 +212,37 @@ const App = () => {
         setIsRefreshing(true);
         const sender = role === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
         const receiver = role === 'his' ? (wifeName || 'Wife') : (husbandName || 'Husband');
-        const partnerLoveLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
-        const primaryGoal = role === 'his'
-            ? `Help ${sender} (Husband) meet the needs of ${receiver} (Wife). Her primary love language is ${herLoveLanguage}. Generate personalized suggestions.`
-            : `Help ${sender} (Wife) meet the needs of ${receiver} (Husband). His primary love language is ${hisLoveLanguage}. Generate personalized suggestions.`;
+        const partnerLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
 
-        const systemPrompt = `You are a relationship expert. ${primaryGoal} Generate 3 items per category. Return ONLY JSON: { "words": { "gentle": ["item1", "item2", "item3"], "flirty": ["item1", "item2", "item3"], "appreciative": ["item1", "item2", "item3"] }, "touch": { "daily": ["item1", "item2", "item3"], "sensual": ["item1", "item2", "item3"], "initiation": ["item1", "item2", "item3"] } }`;
+        // Define categories based on partner's love language
+        const languageCategories = {
+            'Physical Touch': { primary: ['gentle', 'sensual', 'playful'], secondary: ['morning', 'comfort', 'intimate'] },
+            'Words of Affirmation': { primary: ['encouraging', 'appreciative', 'flirty'], secondary: ['compliments', 'gratitude', 'affirmation'] },
+            'Quality Time': { primary: ['date ideas', 'activities', 'conversations'], secondary: ['quick moments', 'weekends', 'traditions'] },
+            'Acts of Service': { primary: ['helpful', 'thoughtful', 'surprise'], secondary: ['daily tasks', 'special gestures', 'anticipate needs'] },
+            'Receiving Gifts': { primary: ['thoughtful', 'meaningful', 'spontaneous'], secondary: ['experiences', 'sentimental', 'practical'] }
+        };
+
+        const cats = languageCategories[partnerLanguage] || languageCategories['Words of Affirmation'];
+
+        const systemPrompt = `You are a relationship expert helping ${sender} show love to ${receiver}.
+
+Partner's PRIMARY love language: ${partnerLanguage}
+
+Generate specific, actionable suggestions in these categories:
+- Primary category 1: "${cats.primary[0]}" - 3 ideas
+- Primary category 2: "${cats.primary[1]}" - 3 ideas
+- Primary category 3: "${cats.primary[2]}" - 3 ideas
+- Secondary category 1: "${cats.secondary[0]}" - 3 ideas
+- Secondary category 2: "${cats.secondary[1]}" - 3 ideas
+- Secondary category 3: "${cats.secondary[2]}" - 3 ideas
+
+Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["idea1", "idea2", "idea3"], "${cats.primary[1]}": ["idea1", "idea2", "idea3"], "${cats.primary[2]}": ["idea1", "idea2", "idea3"] }, "secondary": { "${cats.secondary[0]}": ["idea1", "idea2", "idea3"], "${cats.secondary[1]}": ["idea1", "idea2", "idea3"], "${cats.secondary[2]}": ["idea1", "idea2", "idea3"] } }`;
+
         const result = await callGemini(systemPrompt);
         if (result) {
-            setVaultMessages(result.words || { gentle: [], flirty: [], appreciative: [] });
-            setTouchIdeas(result.touch || { daily: [], sensual: [], initiation: [] });
+            setVaultMessages(result.primary || {});
+            setTouchIdeas(result.secondary || {});
         }
         setIsRefreshing(false);
     };
@@ -491,33 +512,58 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 ))}
                             </div>
 
-                            {activeTab === 'affection' && (
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-50 p-6 space-y-6">
-                                    <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                                        <button onClick={() => { setAffectionType('words'); setVaultStyle('gentle'); }} className={`flex-1 py-2.5 text-[9px] font-black uppercase rounded-xl transition-all ${affectionType === 'words' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Words</button>
-                                        <button onClick={() => { setAffectionType('physical'); setVaultStyle('daily'); }} className={`flex-1 py-2.5 text-[9px] font-black uppercase rounded-xl transition-all ${affectionType === 'physical' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Physical</button>
-                                    </div>
-                                    <div className="flex gap-1.5 p-1 bg-slate-100/50 rounded-xl overflow-x-auto no-scrollbar">
-                                        {(affectionType === 'words' ? ['gentle', 'flirty', 'appreciative'] : ['daily', 'sensual', 'initiation']).map(s => (
-                                            <button key={s} onClick={() => setVaultStyle(s)} className={`flex-1 py-2 px-3 text-[8px] font-black uppercase whitespace-nowrap rounded-lg transition-all ${vaultStyle === s ? 'bg-white shadow-sm text-rose-600' : 'text-slate-400'}`}>{s}</button>
-                                        ))}
-                                    </div>
-                                    <div className="space-y-4">
-                                        {(affectionType === 'words' ? (vaultMessages[vaultStyle] || []) : (touchIdeas[vaultStyle] || [])).map((msg, i) => (
-                                            <div key={i} className="w-full p-6 rounded-[2rem] bg-slate-50 border border-slate-200 relative hover:bg-white hover:border-rose-200 transition-all">
-                                                <p className="text-sm text-slate-700 italic font-medium pr-12 leading-relaxed">"{msg}"</p>
-                                                <button
-                                                    onClick={() => copyToClipboard(msg, `v-${i}`)}
-                                                    className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 transition-all"
-                                                >
-                                                    {copiedId === `v-${i}` ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
-                                                </button>
+                            {activeTab === 'affection' && (() => {
+                                const partnerLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
+                                const partnerName = role === 'his' ? (wifeName || 'Her') : (husbandName || 'Him');
+                                const primaryKeys = Object.keys(vaultMessages);
+                                const secondaryKeys = Object.keys(touchIdeas);
+                                const allPrimaryItems = primaryKeys.flatMap(k => (vaultMessages[k] || []).map(msg => ({ msg, cat: k })));
+                                const allSecondaryItems = secondaryKeys.flatMap(k => (touchIdeas[k] || []).map(msg => ({ msg, cat: k })));
+                                const currentItems = affectionType === 'primary' ? (vaultMessages[vaultStyle] || []) : (touchIdeas[vaultStyle] || []);
+                                const currentKeys = affectionType === 'primary' ? primaryKeys : secondaryKeys;
+
+                                return (
+                                    <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-50 p-6 space-y-6">
+                                        <div className="text-center pb-2 border-b border-slate-100">
+                                            <p className="text-[10px] font-bold text-slate-400 uppercase">For {partnerName}'s Love Language:</p>
+                                            <p className="text-lg font-black text-rose-600">{partnerLanguage}</p>
+                                        </div>
+                                        <div className="flex bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
+                                            <button onClick={() => { setAffectionType('primary'); setVaultStyle(primaryKeys[0] || ''); }} className={`flex-1 py-2.5 text-[9px] font-black uppercase rounded-xl transition-all ${affectionType === 'primary' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-400'}`}>Primary</button>
+                                            <button onClick={() => { setAffectionType('secondary'); setVaultStyle(secondaryKeys[0] || ''); }} className={`flex-1 py-2.5 text-[9px] font-black uppercase rounded-xl transition-all ${affectionType === 'secondary' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-400'}`}>Secondary</button>
+                                        </div>
+                                        {currentKeys.length > 0 && (
+                                            <div className="flex gap-1.5 p-1 bg-slate-100/50 rounded-xl overflow-x-auto no-scrollbar">
+                                                {currentKeys.map(s => (
+                                                    <button key={s} onClick={() => setVaultStyle(s)} className={`flex-1 py-2 px-3 text-[8px] font-black uppercase whitespace-nowrap rounded-lg transition-all ${vaultStyle === s ? 'bg-white shadow-sm text-rose-600' : 'text-slate-400'}`}>{s}</button>
+                                                ))}
                                             </div>
-                                        ))}
+                                        )}
+                                        <div className="space-y-4">
+                                            {currentItems.length > 0 ? currentItems.map((msg, i) => (
+                                                <div key={i} className="w-full p-6 rounded-[2rem] bg-slate-50 border border-slate-200 relative hover:bg-white hover:border-rose-200 transition-all">
+                                                    <p className="text-sm text-slate-700 italic font-medium pr-12 leading-relaxed">"{msg}"</p>
+                                                    <button
+                                                        onClick={() => copyToClipboard(msg, `v-${i}`)}
+                                                        className="absolute top-4 right-4 p-2 rounded-xl bg-white border border-slate-200 hover:border-rose-300 hover:bg-rose-50 transition-all"
+                                                    >
+                                                        {copiedId === `v-${i}` ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4 text-slate-400" />}
+                                                    </button>
+                                                </div>
+                                            )) : (
+                                                <div className="text-center py-8 text-slate-400">
+                                                    <p className="text-sm">Tap "Get New Ideas" to load suggestions</p>
+                                                    <p className="text-xs mt-1">tailored to {partnerName}'s love language</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <button onClick={refreshVaults} disabled={isRefreshing} className="w-full py-4 text-[10px] font-black uppercase text-slate-400 flex items-center justify-center gap-2 disabled:opacity-50">
+                                            <RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+                                            {isRefreshing ? 'Generating...' : 'Get New Ideas'}
+                                        </button>
                                     </div>
-                                    <button onClick={refreshVaults} className="w-full py-4 text-[10px] font-black uppercase text-slate-400 flex items-center justify-center gap-2"><RefreshCcw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} /> Get New Ideas</button>
-                                </div>
-                            )}
+                                );
+                            })()}
 
                             {activeTab === 'communicate' && (
                                 <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-50 p-6 space-y-6">
