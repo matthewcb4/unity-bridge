@@ -139,6 +139,10 @@ const App = () => {
     const [currentGameId, setCurrentGameId] = useState(null); // ID of the specific game we are playing right now
     const [gameHistory, setGameHistory] = useState([]);
     const [gameAnswer, setGameAnswer] = useState('');
+
+    // Letter Link Interaction State
+    const [selectedTileIndex, setSelectedTileIndex] = useState(null); // Index in hand
+    const [placedTiles, setPlacedTiles] = useState([]); // [{ char, row, col, fromHandIndex }]
     const [gameDebts, setGameDebts] = useState(() => JSON.parse(localStorage.getItem('game_debts') || '[]'));
     const [scoreboardFilter, setScoreboardFilter] = useState('all'); // all, 7days, 30days
     const [gameTurn, setGameTurn] = useState(null); // 'his' or 'hers' - whose turn to guess
@@ -733,6 +737,62 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             console.error('Create game error:', err);
             alert('Could not create game. Please try again.');
         }
+    };
+
+    // --- LETTER LINK HANDLERS ---
+    const handleTileClick = (index, char) => {
+        // If clicking a tile already placed on board (handled by board click usually, but if hand tile is clicked?)
+        // In hand: toggle selection
+        if (selectedTileIndex === index) {
+            setSelectedTileIndex(null); // Deselect
+        } else {
+            setSelectedTileIndex(index);
+        }
+    };
+
+    const handleBoardClick = (index) => {
+        const row = Math.floor(index / 11);
+        const col = index % 11;
+
+        // Check if existing permanent tile is there (from activeGame.board)
+        let board = [];
+        try { board = JSON.parse(activeGame.board || '[]'); } catch (e) { }
+        if (board[index]) return; // Occupied by committed tile
+
+        // Check if occupied by a temporary placed tile
+        const tempTileIndex = placedTiles.findIndex(t => t.row === row && t.col === col);
+
+        if (tempTileIndex !== -1) {
+            // Clicked a temporary tile -> Return to hand
+            const tileToReturn = placedTiles[tempTileIndex];
+            setPlacedTiles(prev => prev.filter((_, i) => i !== tempTileIndex));
+            setSelectedTileIndex(null);
+            return;
+        }
+
+        // Placing a selection
+        if (selectedTileIndex !== null) {
+            // Check if this hand tile is already placed elsewhere?
+            // "placedTiles" tracks "fromHandIndex". 
+            // Actually, we should only show tiles in hand that are NOT in "placedTiles".
+            // Logic: The "hand" UI should hide tiles that are in "placedTiles".
+
+            const char = activeGame.players[role].hand[selectedTileIndex];
+            setPlacedTiles(prev => [...prev, { char, row, col, fromHandIndex: selectedTileIndex }]);
+            setSelectedTileIndex(null); // Clear selection after placing
+        }
+    };
+
+    const recallAllTiles = () => {
+        setPlacedTiles([]);
+        setSelectedTileIndex(null);
+    };
+
+    const submitLetterLinkMove = async () => {
+        // Placeholder for move validation
+        if (placedTiles.length === 0) return;
+        alert(`Submitting move with ${placedTiles.length} tiles! (Validation coming soon)`);
+        // TODO: Validate words, calculate score, update board & hand in Firestore
     };
 
     const submitGameAnswer = async (gameId, answer) => {
