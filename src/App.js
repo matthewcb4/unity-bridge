@@ -93,8 +93,11 @@ const App = () => {
     // State
     const [user, setUser] = useState(null);
     const [authError, setAuthError] = useState(null);
-    const [view, setView] = useState('home');
-    const [role, setRole] = useState(localStorage.getItem('user_role') || null);
+    // Auto-redirect to hub if user previously selected a role and has couple code
+    const savedRole = localStorage.getItem('user_role');
+    const savedCode = localStorage.getItem('couple_code');
+    const [view, setView] = useState(savedRole && savedCode ? 'hub' : 'home');
+    const [role, setRole] = useState(savedRole || null);
     const [activeTab, setActiveTab] = useState('affection');
     const [affectionType, setAffectionType] = useState('primary');
 
@@ -722,33 +725,48 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     }
 
     const renderHome = () => (
-        <div className="flex flex-col items-center justify-center h-full px-8 space-y-12 py-12">
-            <div className="text-center space-y-3">
-                <div className="bg-rose-100 p-8 rounded-full inline-block mb-2 shadow-inner border-4 border-white">
-                    <Heart className="w-16 h-16 text-rose-600 fill-rose-600" />
+        <div className="flex flex-col items-center h-full px-4 space-y-4 py-4 overflow-y-auto">
+            {/* Compact Header */}
+            <div className="text-center space-y-1">
+                <div className="bg-rose-100 p-4 rounded-full inline-block border-2 border-white shadow-lg">
+                    <Heart className="w-8 h-8 text-rose-600 fill-rose-600" />
                 </div>
-                <h1 className="text-5xl font-black text-slate-800 tracking-tighter italic uppercase">Unity Bridge</h1>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-[0.3em]">Relationship OS</p>
+                <h1 className="text-2xl font-black text-slate-800 tracking-tighter italic">Unity Bridge</h1>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Relationship OS</p>
             </div>
 
-            <div className="w-full bg-white p-8 rounded-[3rem] shadow-2xl border border-rose-50 space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-blue-500 uppercase ml-2 tracking-widest">Husband</label>
-                        <input value={husbandName} onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-blue-300 outline-none shadow-inner" />
+            {/* Settings Card - Compact */}
+            <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                {/* Names Row */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-500 uppercase ml-1">👤 Husband</label>
+                        <input
+                            value={husbandName}
+                            onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }}
+                            placeholder="Name"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-blue-300'}`}
+                        />
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-rose-500 uppercase ml-2 tracking-widest">Wife</label>
-                        <input value={wifeName} onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }} placeholder="Name" className="w-full bg-slate-50 p-5 rounded-[2rem] text-sm border border-slate-100 focus:border-rose-300 outline-none shadow-inner" />
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-rose-500 uppercase ml-1">👤 Wife</label>
+                        <input
+                            value={wifeName}
+                            onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }}
+                            placeholder="Name"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-rose-300'}`}
+                        />
                     </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-blue-400 uppercase ml-2 tracking-widest">His Love Language</label>
+
+                {/* Love Languages Row */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
                         <select
                             value={hisLoveLanguage}
                             onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
-                            className="w-full bg-blue-50 p-4 rounded-2xl text-xs border border-blue-100 outline-none"
+                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
                         >
                             <option>Physical Touch</option>
                             <option>Words of Affirmation</option>
@@ -757,12 +775,12 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             <option>Receiving Gifts</option>
                         </select>
                     </div>
-                    <div className="space-y-2">
-                        <label className="text-[10px] font-black text-rose-400 uppercase ml-2 tracking-widest">Her Love Language</label>
+                    <div className="space-y-1">
+                        <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
                         <select
                             value={herLoveLanguage}
                             onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
-                            className="w-full bg-rose-50 p-4 rounded-2xl text-xs border border-rose-100 outline-none"
+                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
                         >
                             <option>Words of Affirmation</option>
                             <option>Physical Touch</option>
@@ -772,37 +790,50 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         </select>
                     </div>
                 </div>
-                <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <label className="text-[10px] font-black text-purple-500 uppercase ml-2 tracking-widest flex items-center gap-2">
+
+                {/* Couple Code */}
+                <div className="space-y-1.5">
+                    <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
                         <Lock className="w-3 h-3" /> Couple Code
                     </label>
                     <input
                         value={coupleCode}
                         onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
-                        placeholder="Enter a shared code (e.g. smith2024)"
-                        className="w-full bg-purple-50 p-5 rounded-[2rem] text-sm border border-purple-100 focus:border-purple-300 outline-none shadow-inner text-center font-mono tracking-widest"
+                        placeholder="e.g. smith2024"
+                        className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
                     />
-                    <p className="text-[9px] text-slate-400 text-center px-4">Use the same code on all your devices to sync your data</p>
+                    <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Same code on all devices to sync</p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 w-full gap-5">
+            {/* Hub Buttons - Compact */}
+            <div className="grid grid-cols-2 w-full gap-3">
                 <button
                     onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); setAffectionType('primary'); } }}
-                    className={`p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50 cursor-not-allowed'}`}
+                    className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
                 >
-                    <div className="text-left"><h3 className="text-2xl font-black text-slate-800">Husband's Hub</h3><p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest mt-1">Nurturing her needs</p></div>
-                    <div className="w-14 h-14 rounded-3xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-inner"><MessageCircle className="w-7 h-7" /></div>
+                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                        <User className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                        <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Husband</h3>
+                        <p className="text-[8px] text-blue-500 font-bold uppercase">Enter Hub</p>
+                    </div>
                 </button>
                 <button
                     onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); setAffectionType('primary'); } }}
-                    className={`p-7 bg-white border border-slate-100 rounded-[3rem] shadow-xl flex items-center justify-between transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50 cursor-not-allowed'}`}
+                    className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
                 >
-                    <div className="text-left"><h3 className="text-2xl font-black text-slate-800">Wife's Hub</h3><p className="text-[10px] text-rose-400 font-bold uppercase tracking-widest mt-1">Nurturing his needs</p></div>
-                    <div className="w-14 h-14 rounded-3xl bg-rose-50 text-rose-600 flex items-center justify-center shadow-inner"><Hand className="w-7 h-7" /></div>
+                    <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                        <User className="w-6 h-6" />
+                    </div>
+                    <div className="text-center">
+                        <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Wife</h3>
+                        <p className="text-[8px] text-rose-500 font-bold uppercase">Enter Hub</p>
+                    </div>
                 </button>
-                {!coupleCode && <p className="text-[10px] text-purple-500 text-center font-bold">Enter a couple code above to get started</p>}
             </div>
+            {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter couple code to unlock</p>}
         </div>
     );
 
