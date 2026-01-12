@@ -822,9 +822,16 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
                     {view === 'hub' && (
                         <div className="space-y-6">
-                            <div className={`flex p-1.5 rounded-2xl border shadow-sm sticky top-0 z-10 ${darkMode ? 'bg-slate-800/90 border-slate-700 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
-                                {['affection', 'communicate', 'journal', 'settings'].map(tab => (
-                                    <button key={tab} onClick={() => setActiveTab(tab)} className={`flex-1 py-3 text-[10px] font-black uppercase tracking-widest rounded-xl transition-all ${activeTab === tab ? 'bg-rose-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-400'}`}>{tab === 'settings' ? '⚙️' : tab}</button>
+                            <div className={`flex gap-1 p-1.5 rounded-2xl border shadow-sm sticky top-0 z-10 ${darkMode ? 'bg-slate-800/90 border-slate-700 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
+                                {[
+                                    { id: 'affection', label: '💕 Love', short: '💕' },
+                                    { id: 'communicate', label: '💬 Talk', short: '💬' },
+                                    { id: 'journal', label: '📔 Journal', short: '📔' },
+                                    { id: 'settings', label: '⚙️', short: '⚙️' }
+                                ].map(tab => (
+                                    <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2.5 px-1 text-[9px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${activeTab === tab.id ? 'bg-rose-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                                        {tab.id === 'settings' ? tab.label : tab.label}
+                                    </button>
                                 ))}
                             </div>
 
@@ -1158,52 +1165,62 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     )}
 
                     {view === 'bridge' && (
-                        <div className="p-6 space-y-6 animate-in slide-in-from-bottom-4 duration-300">
-                            <div className="bg-slate-900 rounded-[3rem] p-8 shadow-2xl space-y-6 border border-white/10 relative overflow-hidden">
-                                <div className="flex items-center gap-4"><Wind className="w-6 h-6 text-blue-400" /><h2 className="text-white font-black uppercase text-sm tracking-widest">Safe Reset</h2></div>
-                                <button onClick={() => saveToBridge("I'm feeling flooded and need a 20-minute timeout. I love you.")} className="w-full bg-blue-600 text-white font-black py-5 rounded-[2.5rem] shadow-lg active:scale-95 text-sm">SIGNAL TIMEOUT</button>
+                        <div className="p-3 space-y-3 animate-in slide-in-from-bottom-4 duration-300">
+                            {/* Quick Actions Row */}
+                            <div className="flex gap-2">
+                                <button onClick={() => saveToBridge("I'm feeling flooded and need a 20-minute timeout. I love you.")} className="flex-1 bg-slate-900 text-white font-bold py-3 px-4 rounded-2xl shadow-lg active:scale-95 text-xs flex items-center justify-center gap-2 border border-white/10">
+                                    <Wind className="w-4 h-4 text-blue-400" /> Signal Timeout
+                                </button>
+                                <button onClick={() => setView('resolve')} className="bg-orange-500 text-white font-bold py-3 px-4 rounded-2xl shadow-lg active:scale-95 text-xs flex items-center justify-center gap-2">
+                                    <Anchor className="w-4 h-4" /> Resolve
+                                </button>
                             </div>
-                            <div className="bg-white rounded-[3rem] shadow-xl border border-rose-100 p-8 space-y-6">
-                                <div className="flex justify-between items-center"><h2 className="text-xs font-black text-rose-600 uppercase">Pulse Analysis</h2><button onClick={generatePulse} className="text-[10px] font-black text-rose-600 border px-4 py-1 rounded-full uppercase">Analyze</button></div>
+
+                            {/* Pulse Analysis - Compact */}
+                            <div className={`rounded-2xl shadow-lg border p-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
+                                <div className="flex justify-between items-center">
+                                    <h2 className={`text-xs font-black uppercase ${darkMode ? 'text-rose-400' : 'text-rose-600'}`}>Pulse Analysis</h2>
+                                    <button onClick={generatePulse} className="text-[9px] font-bold text-rose-600 border border-rose-200 px-3 py-1 rounded-full uppercase hover:bg-rose-50">Analyze</button>
+                                </div>
                                 {pulse && (
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="p-4 bg-slate-50 rounded-[2rem] text-center"><p className="text-[8px] font-black text-slate-400 mb-1">Vibe</p><p className="text-sm font-black text-rose-600 italic">"{pulse.vibe}"</p></div>
-                                        <div className="p-4 bg-slate-50 rounded-[2rem]"><p className="text-[8px] font-black text-slate-400 mb-1">Pattern</p><p className="text-[11px] font-bold text-slate-700">{pulse.pattern}</p></div>
-                                        <div className="p-6 bg-rose-600 rounded-[2.5rem] text-white col-span-2"><p className="text-[10px] font-black opacity-70 mb-1 uppercase tracking-widest">Shared Focus</p><p className="text-sm font-bold leading-relaxed">{pulse.focus}</p></div>
+                                    <div className="grid grid-cols-3 gap-2 mt-3">
+                                        <div className={`p-2 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                            <p className="text-[7px] font-bold text-slate-400 uppercase">Vibe</p>
+                                            <p className={`text-xs font-black ${darkMode ? 'text-rose-400' : 'text-rose-600'}`}>"{pulse.vibe}"</p>
+                                        </div>
+                                        <div className={`p-2 rounded-xl col-span-2 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                            <p className="text-[7px] font-bold text-slate-400 uppercase">Pattern</p>
+                                            <p className={`text-[10px] font-bold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{pulse.pattern}</p>
+                                        </div>
                                     </div>
                                 )}
                             </div>
-                            <div className="space-y-4">
-                                <div className="flex justify-between items-center px-4">
-                                    <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Shared History</h2>
-                                    <button
-                                        onClick={clearBridgeView}
-                                        className="text-[9px] font-bold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full flex items-center gap-1 hover:bg-red-50 hover:text-red-500 transition-all"
-                                    >
-                                        <Trash2 className="w-3 h-3" />
-                                        Clear My View
+
+                            {/* Shared History - Compact */}
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center px-1">
+                                    <h2 className={`text-lg font-black tracking-tight ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Shared History</h2>
+                                    <button onClick={clearBridgeView} className={`text-[8px] font-bold px-2 py-1 rounded-full flex items-center gap-1 ${darkMode ? 'text-slate-400 bg-slate-700' : 'text-slate-500 bg-slate-100'} hover:bg-red-100 hover:text-red-500`}>
+                                        <Trash2 className="w-3 h-3" /> Clear
                                     </button>
                                 </div>
                                 {visibleBridgeItems.length === 0 ? (
-                                    <div className="text-center py-12 text-slate-400">
-                                        <p className="text-sm">No messages yet</p>
-                                        <p className="text-xs mt-1">Share something from the hub to start!</p>
+                                    <div className={`text-center py-6 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        <p className="text-xs">No messages yet</p>
+                                        <p className="text-[10px] mt-0.5">Share from the hub to start!</p>
                                     </div>
                                 ) : (
                                     visibleBridgeItems.map(item => (
-                                        <div key={item.id} className={`p-8 rounded-[3rem] border-2 relative ${item.author === role ? 'bg-slate-50 border-slate-100' : 'bg-rose-50/50 border-rose-100'}`}>
-                                            <div className="flex justify-between mb-3">
-                                                <span className={`text-[10px] font-black uppercase tracking-widest ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span>
+                                        <div key={item.id} className={`p-4 rounded-2xl border relative ${item.author === role ? (darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200') : (darkMode ? 'bg-rose-900/20 border-rose-800' : 'bg-rose-50/50 border-rose-200')}`}>
+                                            <div className="flex justify-between mb-1">
+                                                <span className={`text-[9px] font-black uppercase ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span>
                                                 {item.author === role && (
-                                                    <button
-                                                        onClick={() => deleteFromBridge(item.id)}
-                                                        className="text-[9px] font-bold text-red-400 hover:text-red-600 transition-all"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
+                                                    <button onClick={() => deleteFromBridge(item.id)} className="text-red-400 hover:text-red-600">
+                                                        <Trash2 className="w-3 h-3" />
                                                     </button>
                                                 )}
                                             </div>
-                                            <p className="text-base text-slate-700 italic font-medium leading-relaxed">"{item.content}"</p>
+                                            <p className={`text-sm italic font-medium leading-snug ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>"{item.content}"</p>
                                         </div>
                                     ))
                                 )}
@@ -1576,24 +1593,21 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             {/* Navigation (Fixed) */}
             {
                 view !== 'home' && (
-                    <nav className="shrink-0 h-20 w-full bg-slate-900 flex items-center justify-around px-2 border-t border-white/5 z-50">
-                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-1 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <User className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Hub</span>
+                    <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
                         </button>
-                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldCheckComp className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Bridge</span>
+                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
                         </button>
-                        <button onClick={() => setView('resolve')} className={`flex flex-col items-center gap-1 transition-all ${view === 'resolve' ? 'text-orange-500 scale-110' : 'text-slate-500'}`}>
-                            <Anchor className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Resolve</span>
+                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
+                            <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
                         </button>
-                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-1 transition-all ${view === 'games' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <Gamepad2 className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Games</span>
+                        <button onClick={() => setView('date')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'date' ? 'text-pink-500 scale-110' : 'text-slate-500'}`}>
+                            <Calendar className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Date</span>
                         </button>
-                        <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <Calendar className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Date</span>
-                        </button>
-                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <Bell className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Nudge</span>
+                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                            <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
                         </button>
                     </nav>
                 )
