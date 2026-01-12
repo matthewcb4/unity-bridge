@@ -668,35 +668,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     };
 
     // --- GAME FUNCTIONS ---
-    const getPersonalizedWords = () => {
-        const words = [];
 
-        // Add partner names (minimum 4 letters)
-        if (husbandName && husbandName.length >= 4) words.push(husbandName.toUpperCase());
-        if (wifeName && wifeName.length >= 4) words.push(wifeName.toUpperCase());
-
-        // Extract meaningful words from journal entries
-        journalItems.forEach(item => {
-            if (item.content) {
-                const journalWords = item.content
-                    .split(/\s+/)
-                    .map(w => w.replace(/[^a-zA-Z]/g, '').toUpperCase())
-                    .filter(w => w.length >= 4 && w.length <= 8);
-                words.push(...journalWords);
-            }
-        });
-
-        // Add romantic fallback words
-        const fallbackWords = [
-            'LOVE', 'HEART', 'TRUST', 'UNITY', 'CARE', 'HOPE', 'DREAM', 'BLISS',
-            'ADORE', 'SPARK', 'SWEET', 'CHARM', 'GRACE', 'FAITH', 'LOYAL',
-            'PEACE', 'HAPPY', 'SMILE', 'WARM', 'KIND', 'GENTLE', 'TENDER', 'DEAR'
-        ];
-        words.push(...fallbackWords);
-
-        // Remove duplicates and short words
-        return [...new Set(words)].filter(w => w.length >= 4);
-    };
 
     const getPersonalizedWords = () => {
         const words = new Set();
