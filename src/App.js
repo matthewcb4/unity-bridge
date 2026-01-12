@@ -135,7 +135,8 @@ const App = () => {
     });
 
     // Game state
-    const [currentGame, setCurrentGame] = useState(null);
+    const [activeGames, setActiveGames] = useState([]);
+    const [currentGameId, setCurrentGameId] = useState(null); // ID of the specific game we are playing right now
     const [gameHistory, setGameHistory] = useState([]);
     const [gameAnswer, setGameAnswer] = useState('');
     const [gameDebts, setGameDebts] = useState(() => JSON.parse(localStorage.getItem('game_debts') || '[]'));
@@ -237,15 +238,13 @@ const App = () => {
             }
         }, (err) => console.error("Settings Sync Error:", err));
 
-        // Listen for active game
-        const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
-        const unsubGame = onSnapshot(gameRef, (snap) => {
-            if (snap.exists()) {
-                setCurrentGame({ id: snap.id, ...snap.data() });
-            } else {
-                setCurrentGame(null);
-            }
-        }, (err) => console.error("Game Sync Error:", err));
+        // Listen for active games (Concept: Lobby)
+        const activeGamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
+        const unsubGames = onSnapshot(activeGamesRef, (snap) => {
+            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Sort by creation date desc
+            setActiveGames(games.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+        }, (err) => console.error("Games Sync Error:", err));
 
         // Listen for game history
         const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
@@ -723,8 +722,8 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             journalItems.some(j => j.content?.toUpperCase().includes(word));
 
         try {
-            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
-            await setDoc(gameRef, {
+            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
+            await addDoc(gamesRef, {
                 type: 'word_scramble',
                 word: word,
                 scrambled: scrambled,
@@ -743,34 +742,34 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         }
     };
 
-    const submitGameAnswer = async () => {
-        if (!currentGame || !gameAnswer || !coupleCode || !db) return;
+    const submitGameAnswer = async (gameId, answer) => {
+        const game = activeGames.find(g => g.id === gameId);
+        if (!game || !answer || !coupleCode || !db) return;
 
-        const isCorrect = gameAnswer.toUpperCase().trim() === currentGame.word;
+        const isCorrect = answer.toUpperCase().trim() === game.word;
         const playerName = role === 'his' ? husbandName : wifeName;
 
         if (isCorrect) {
             try {
-                // Save to history with correct path
+                // Save to history
                 const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
                 await addDoc(historyRef, {
-                    type: currentGame.type,
-                    word: currentGame.word,
-                    wager: currentGame.wager,
-                    createdBy: currentGame.createdBy,
-                    creatorName: currentGame.creatorName,
+                    type: game.type,
+                    word: game.word,
+                    wager: game.wager,
+                    createdBy: game.createdBy,
+                    creatorName: game.creatorName,
                     solvedBy: role,
                     solverName: playerName,
-                    points: 10, // Base points for solving
+                    points: 10 + (game.isPersonal ? 10 : 0), // Base + Bonus
                     completedAt: serverTimestamp()
                 });
 
-                // Clear current game
-                const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
-                await setDoc(gameRef, { solved: true, solvedBy: role, solverName: playerName }, { merge: true });
+                // Delete the game from active list (it's done)
+                await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
+                setCurrentGameId(null);
 
-                alert(`🎉 Correct! ${currentGame.wager ? `\n\n💝 Wager: ${currentGame.wager}` : ''}`);
-                setGameAnswer('');
+                alert(`🎉 Correct! ${game.wager ? `\n\n💝 You won the wager: ${game.wager}` : ''}`);
             } catch (err) {
                 console.error('Submit answer error:', err);
             }
@@ -780,30 +779,75 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             const nextPlayerName = role === 'his' ? (wifeName || 'Partner') : (husbandName || 'Partner');
 
             try {
-                // Update game with new turn
-                const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
-                await setDoc(gameRef, { currentTurn: nextTurn }, { merge: true });
-                setGameTurn(nextTurn);
+                await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
+                    currentTurn: nextTurn
+                });
             } catch (err) {
                 console.error('Update turn error:', err);
             }
 
-            alert(`❌ Wrong guess! It's now ${nextPlayerName}'s turn.\n\n🚫 No cheating with ChatGPT! 😉`);
-            setGameAnswer('');
+            alert(`❌ Wrong guess! It's now ${nextPlayerName}'s turn.`);
         }
     };
 
-    const clearCurrentGame = async () => {
+    const deleteActiveGame = async (gameId) => {
         if (!coupleCode || !db) return;
-        if (!window.confirm('Clear this puzzle? Both partners will lose it.')) return;
+        if (!window.confirm('Delete this game? It will be removed for both players.')) return;
         try {
-            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
-            await setDoc(gameRef, {}, { merge: false });
-            setCurrentGame(null);
+            await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
+            if (currentGameId === gameId) setCurrentGameId(null);
         } catch (err) {
-            console.error('Clear game error:', err);
+            console.error('Delete game error:', err);
         }
     };
+
+    // LETTER LINK (Scrabble-like) LOGIC
+    const createLetterLinkGame = async (wager = '') => {
+        if (!coupleCode || !db || !role) return;
+
+        // 11x11 Board (121 cells). null = empty. { char: 'A', owner: 'his' } = tile.
+        const board = Array(121).fill(null);
+        // Place center star
+        // board[60] -> center (row 5, col 5 for 0-indexed)
+
+        // Initial Bag
+        // Distribution (simplified): E-12, A-9, I-9, O-8, N-6, R-6, T-6, L-4, S-4, U-4, D-4, G-3, B-2, C-2, M-2, P-2, F-2, H-2, V-2, W-2, Y-2, K-1, J-1, X-1, Q-1, Z-1, Blank-2
+        const bagDist = { E: 12, A: 9, I: 9, O: 8, N: 6, R: 6, T: 6, L: 4, S: 4, U: 4, D: 4, G: 3, B: 2, C: 2, M: 2, P: 2, F: 2, H: 2, V: 2, W: 2, Y: 2, K: 1, J: 1, X: 1, Q: 1, Z: 1, '_': 2 };
+        let bag = [];
+        Object.entries(bagDist).forEach(([char, count]) => {
+            for (let i = 0; i < count; i++) bag.push(char);
+        });
+        // Shuffle bag
+        bag = bag.sort(() => Math.random() - 0.5);
+
+        // Deal 7 tiles to creator
+        const creatorHand = bag.splice(0, 7);
+        const partnerHand = bag.splice(0, 7);
+
+        try {
+            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
+            await addDoc(gamesRef, {
+                type: 'letter_link',
+                wager: wager,
+                createdBy: role,
+                creatorName: role === 'his' ? husbandName : wifeName,
+                createdAt: serverTimestamp(),
+                currentTurn: role, // Creator starts? Or randomize? Let's say creator starts to place first word.
+                board: JSON.stringify(board), // Store as string for simpler Firestore handling
+                bag: bag,
+                players: {
+                    his: { hand: role === 'his' ? creatorHand : partnerHand, score: 0 },
+                    hers: { hand: role === 'hers' ? creatorHand : partnerHand, score: 0 }
+                },
+                history: [] // Log of moves: { word: "HELLO", points: 14, player: 'his' }
+            });
+            alert('New game started! Good luck.');
+        } catch (err) {
+            console.error('Create Letter Link error:', err);
+            alert('Failed to start game.');
+        }
+    };
+
 
     const clearBridgeView = () => {
         if (window.confirm('Clear your bridge history? (This only clears your view, not your partner\'s)')) {
@@ -1947,534 +1991,610 @@ Generated by Unity Bridge - Relationship OS`;
                             </div>
 
                             {/* Active Game or Create New */}
-                            {currentGame && !currentGame.solved ? (
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                    <div className="text-center">
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Word Scramble from {currentGame.creatorName}</p>
-                                        {currentGame.hint && (
-                                            <p className="text-xs text-pink-500 mt-1">{currentGame.hint}</p>
-                                        )}
-                                    </div>
-                                    <div className="text-center py-6">
-                                        <p className="text-4xl font-black text-slate-800 tracking-[0.3em]">{currentGame.scrambled}</p>
-                                    </div>
-                                    {currentGame.wager && (
-                                        <div className="p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-2xl text-center">
-                                            <p className="text-[10px] font-bold text-purple-600 uppercase">💝 Wager</p>
-                                            <p className="text-sm font-bold text-slate-700 mt-1">{currentGame.wager}</p>
-                                        </div>
-                                    )}
+                            {/* Game View Logic */}
+                            {(() => {
+                                const activeGame = activeGames.find(g => g.id === currentGameId);
 
-                                    {/* Turn Indicator */}
-                                    {(() => {
-                                        const currentTurn = currentGame.currentTurn || (currentGame.createdBy === 'his' ? 'hers' : 'his'); // First guess goes to other player
-                                        const isMyTurn = currentTurn === role;
-                                        const turnName = currentTurn === 'his' ? (husbandName || 'Him') : (wifeName || 'Her');
-
-                                        return (
-                                            <div className={`p-3 rounded-2xl text-center ${isMyTurn ? 'bg-green-50 border-2 border-green-200' : 'bg-slate-100 border-2 border-slate-200'}`}>
-                                                <p className="text-xs font-bold">
-                                                    {isMyTurn ? (
-                                                        <span className="text-green-600">🎯 Your turn to guess!</span>
-                                                    ) : (
-                                                        <span className="text-slate-500">⏳ Waiting for {turnName}'s guess...</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                        );
-                                    })()}
-                                    {(() => {
-                                        const currentTurn = currentGame.currentTurn || (currentGame.createdBy === 'his' ? 'hers' : 'his');
-                                        const isMyTurn = currentTurn === role;
-
-                                        return (
-                                            <>
-                                                <input
-                                                    type="text"
-                                                    value={gameAnswer}
-                                                    onChange={(e) => setGameAnswer(e.target.value)}
-                                                    placeholder={isMyTurn ? "Your answer..." : "Wait for your turn..."}
-                                                    disabled={!isMyTurn}
-                                                    className={`w-full p-4 border rounded-2xl text-center text-lg font-bold uppercase outline-none ${isMyTurn ? 'bg-slate-50 border-slate-200 focus:border-purple-300' : 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed'}`}
-                                                    style={{ userSelect: 'none' }}
-                                                    onContextMenu={(e) => e.preventDefault()}
-                                                />
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={submitGameAnswer}
-                                                        disabled={!gameAnswer || !isMyTurn}
-                                                        className="flex-1 py-4 text-sm font-black text-white bg-purple-600 rounded-2xl disabled:opacity-50"
-                                                    >
-                                                        {isMyTurn ? 'Submit Answer' : 'Not Your Turn'}
-                                                    </button>
-                                                    <button
-                                                        onClick={clearCurrentGame}
-                                                        className="py-4 px-4 text-sm font-bold text-slate-400 bg-slate-100 rounded-2xl"
-                                                    >
-                                                        <Trash2 className="w-4 h-4" />
-                                                    </button>
-                                                </div>
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                            ) : selectedGame === 'word_scramble' ? (
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                    <h3 className="text-center text-sm font-black text-purple-600 uppercase">Create a Puzzle for Your Partner</h3>
-                                    <input
-                                        type="text"
-                                        placeholder="Optional wager... (e.g., 'Loser gives a massage')"
-                                        className="w-full p-4 bg-purple-50 border border-purple-100 rounded-2xl text-sm outline-none focus:border-purple-300"
-                                        id="wager-input"
-                                    />
-                                    <button
-                                        onClick={() => {
-                                            const wager = document.getElementById('wager-input')?.value || '';
-                                            createWordPuzzle(wager);
-                                        }}
-                                        className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-lg"
-                                    >
-                                        🎲 Generate Word Puzzle
-                                    </button>
-                                    <button
-                                        onClick={() => setSelectedGame(null)}
-                                        className="w-full py-3 text-xs font-bold text-slate-400"
-                                    >
-                                        ← Back to Games Menu
-                                    </button>
-                                </div>
-                            ) : null}
-
-                            {/* Game Menu - show when no game selected and no active game */}
-                            {!selectedGame && (!currentGame || currentGame.solved) && (
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                    <h3 className="text-center text-sm font-black text-purple-600 uppercase">Choose a Game</h3>
-                                    <div className="space-y-3">
-                                        <button
-                                            onClick={() => setSelectedGame('word_scramble')}
-                                            className="w-full p-5 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl text-left hover:border-purple-400 transition-all"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl">🔤</div>
-                                                <div>
-                                                    <p className="font-black text-slate-800">Word Scramble</p>
-                                                    <p className="text-xs text-slate-500">Unscramble personalized words • 10 pts</p>
-                                                </div>
-                                            </div>
-                                        </button>
-                                        <div className="w-full p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-left opacity-50">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-2xl">🎯</div>
-                                                <div>
-                                                    <p className="font-black text-slate-600">Trivia Challenge</p>
-                                                    <p className="text-xs text-slate-400">Coming soon...</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="w-full p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-left opacity-50">
-                                            <div className="flex items-center gap-4">
-                                                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-2xl">❤️</div>
-                                                <div>
-                                                    <p className="font-black text-slate-600">Love Quiz</p>
-                                                    <p className="text-xs text-slate-400">Coming soon...</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Scoreboard with Points */}
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                <div className="flex items-center gap-2 justify-center">
-                                    <Trophy className="w-5 h-5 text-yellow-500" />
-                                    <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
-                                </div>
-
-                                {/* Timeline Filter */}
-                                <div className="flex justify-center gap-2">
-                                    {[
-                                        { id: '7days', label: '7 Days' },
-                                        { id: '30days', label: '30 Days' },
-                                        { id: 'all', label: 'All Time' }
-                                    ].map(filter => (
-                                        <button
-                                            key={filter.id}
-                                            onClick={() => setScoreboardFilter(filter.id)}
-                                            className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase transition-all ${scoreboardFilter === filter.id
-                                                ? 'bg-purple-600 text-white'
-                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                                }`}
-                                        >
-                                            {filter.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {(() => {
-                                    const now = new Date();
-                                    const filteredHistory = gameHistory.filter(g => {
-                                        if (scoreboardFilter === 'all') return true;
-                                        const gameDate = g.solvedAt?.toDate ? g.solvedAt.toDate() : new Date(g.solvedAt);
-                                        const daysDiff = Math.floor((now - gameDate) / (1000 * 60 * 60 * 24));
-                                        return scoreboardFilter === '7days' ? daysDiff <= 7 : daysDiff <= 30;
-                                    });
-                                    const hisWins = filteredHistory.filter(g => g.solvedBy === 'his').length;
-                                    const hersWins = filteredHistory.filter(g => g.solvedBy === 'hers').length;
-
+                                // 1. SPECIFIC GAME VIEW
+                                if (activeGame) {
                                     return (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="text-center p-4 bg-blue-50 rounded-2xl">
-                                                <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
-                                                <p className="text-3xl font-black text-blue-600">{hisWins} 🏆</p>
-                                                <p className="text-[9px] text-blue-400">wins</p>
-                                            </div>
-                                            <div className="text-center p-4 bg-rose-50 rounded-2xl">
-                                                <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
-                                                <p className="text-3xl font-black text-rose-600">{hersWins} 🏆</p>
-                                                <p className="text-[9px] text-rose-400">wins</p>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-
-                                {gameHistory.length > 0 && (
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Recent Games</p>
-                                        {gameHistory.slice(0, 5).map((game, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                <span className="text-xs font-bold text-slate-600">{game.word}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-purple-600">+{game.points || 10} pts</span>
-                                                    <span className="text-[9px] text-slate-400">{game.solverName}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Wager Debts Tracker */}
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-pink-100 p-6 space-y-4">
-                                <div className="flex items-center gap-2 justify-center">
-                                    <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-                                    <h3 className="text-sm font-black text-slate-800 uppercase">Wager Tracker</h3>
-                                </div>
-                                <p className="text-[10px] text-center text-slate-400">Track fun wagers and rewards owed!</p>
-
-                                {/* Add New Debt */}
-                                <div className="flex flex-col gap-2">
-                                    <input
-                                        type="text"
-                                        id="new-debt-input"
-                                        placeholder="e.g., Back massage, Dinner choice..."
-                                        className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-pink-300"
-                                    />
-                                    <select id="new-debt-owner" className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none">
-                                        <option value="his">{husbandName || 'He'} owes</option>
-                                        <option value="hers">{wifeName || 'She'} owes</option>
-                                    </select>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        const input = document.getElementById('new-debt-input');
-                                        const owner = document.getElementById('new-debt-owner');
-                                        if (input.value.trim()) {
-                                            const newDebt = {
-                                                id: Date.now(),
-                                                description: input.value.trim(),
-                                                owedBy: owner.value,
-                                                paid: false,
-                                                createdAt: new Date().toISOString()
-                                            };
-                                            const updatedDebts = [...gameDebts, newDebt];
-                                            setGameDebts(updatedDebts);
-                                            localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                            input.value = '';
-                                        }
-                                    }}
-                                    className="w-full py-3 bg-pink-500 text-white font-bold text-xs rounded-xl"
-                                >
-                                    ➕ Add Wager
-                                </button>
-
-                                {/* Debts List */}
-                                {gameDebts.length > 0 && (
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Outstanding Wagers</p>
-                                        {gameDebts.filter(d => !d.paid).map(debt => (
-                                            <div key={debt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => {
-                                                            const updatedDebts = gameDebts.map(d =>
-                                                                d.id === debt.id ? { ...d, paid: true } : d
-                                                            );
-                                                            setGameDebts(updatedDebts);
-                                                            localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                                        }}
-                                                        className="w-6 h-6 rounded-full border-2 border-pink-300 bg-white hover:bg-pink-100 flex items-center justify-center transition-all"
-                                                    >
-                                                        <span className="text-pink-300 text-sm">💕</span>
-                                                    </button>
-                                                    <div>
-                                                        <p className="text-xs font-bold text-slate-600">{debt.description}</p>
-                                                        <p className="text-[9px] text-slate-400">
-                                                            {debt.owedBy === 'his' ? (husbandName || 'He') : (wifeName || 'She')} owes
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-
-                                        {/* Paid Debts */}
-                                        {gameDebts.filter(d => d.paid).length > 0 && (
-                                            <>
-                                                <p className="text-[10px] font-bold text-green-500 uppercase pt-2">✅ Paid Up</p>
-                                                {gameDebts.filter(d => d.paid).slice(0, 3).map(debt => (
-                                                    <div key={debt.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl opacity-60">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                                                                <Check className="w-4 h-4 text-white" />
-                                                            </div>
-                                                            <p className="text-xs text-slate-500 line-through">{debt.description}</p>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => {
-                                                                const updatedDebts = gameDebts.filter(d => d.id !== debt.id);
-                                                                setGameDebts(updatedDebts);
-                                                                localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                                            }}
-                                                            className="text-slate-400 hover:text-red-500"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-
-                                {gameDebts.length === 0 && (
-                                    <p className="text-xs text-center text-slate-400 py-4">No wagers yet! Win a game and set a fun reward 🎁</p>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {view === 'nudge' && (
-                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-2 pt-2">
-                                <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg"><Bell className="w-7 h-7 text-rose-600" /></div>
-                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
-                                <p className="text-xs text-slate-400">Set daily reminders to nurture your connection</p>
-                            </div>
-
-                            {/* Notification Settings (Moved to Top) */}
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-100 p-6 space-y-4">
-                                <div className="flex items-center gap-2 justify-center">
-                                    <Bell className="w-5 h-5 text-rose-500" />
-                                    <h3 className="text-sm font-black text-slate-800 uppercase">Notifications</h3>
-                                </div>
-
-                                {notificationPermission !== 'granted' ? (
-                                    <div className="text-center space-y-3">
-                                        <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
-
-                                        {/* iOS specific hint */}
-                                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
-                                            <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
-                                            <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
-                                            <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
-                                                <li>Tap the <strong>Share</strong> button (box with arrow)</li>
-                                                <li>Select <strong>Add to Home Screen</strong></li>
-                                                <li>Open the app from your home screen</li>
-                                            </ol>
-                                        </div>
-
-                                        <button
-                                            onClick={requestNotificationPermission}
-                                            className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
-                                        >
-                                            🔔 Enable Notifications
-                                        </button>
-                                        {notificationPermission === 'denied' && (
-                                            <p className="text-xs text-red-500">Notifications are blocked. Check your browser settings to enable them.</p>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
-
-                                        {[
-                                            { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn to guess' },
-                                            { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from your partner' },
-                                            { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for your date nights' },
-                                            { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a loving message' }
-                                        ].map(pref => (
-                                            <div key={pref.key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-xl">{pref.emoji}</span>
-                                                    <div>
-                                                        <p className="text-xs font-bold text-slate-700">{pref.label}</p>
-                                                        <p className="text-xs text-slate-400">{pref.desc}</p>
-                                                    </div>
-                                                </div>
+                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                            <div className="flex justify-between items-start">
                                                 <button
-                                                    onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])}
-                                                    className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}
+                                                    onClick={() => setCurrentGameId(null)}
+                                                    className="text-xs font-bold text-slate-400 flex items-center gap-1"
                                                 >
-                                                    <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
+                                                    ← Back
+                                                </button>
+                                                <button
+                                                    onClick={() => deleteActiveGame(activeGame.id)}
+                                                    className="text-slate-300 hover:text-red-400"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
                                                 </button>
                                             </div>
-                                        ))}
 
-                                        <button
-                                            onClick={() => sendNotification('Test Notification 💕', 'This is a test from Unity Bridge!', 'general')}
-                                            className="w-full py-3 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all"
-                                        >
-                                            🔔 Send Test Notification
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="space-y-3">
-                                {['Morning', 'Lunch', 'Evening'].map(time => {
-                                    const nudge = NUDGE_DATA[time];
-                                    const NudgeIcon = nudge.icon;
-                                    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}\n\nOpen Unity Bridge to connect with your spouse.`)}&recur=RRULE:FREQ=DAILY`;
-                                    const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
-                                    return (
-                                        <div key={time} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg space-y-3">
-                                            <div className="flex items-start gap-3">
-                                                <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center shrink-0">
-                                                    <NudgeIcon className="w-5 h-5 text-rose-600" />
-                                                </div>
-                                                <div className="flex-1">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="text-lg font-black text-slate-800 tracking-tight">{time} Check-in</p>
-                                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{nudge.time}</span>
+                                            {/* WORD SCRAMBLE UI */}
+                                            {activeGame.type === 'word_scramble' && (
+                                                <>
+                                                    <div className="text-center">
+                                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Word Scramble from {activeGame.creatorName}</p>
+                                                        {activeGame.hint && <p className="text-xs text-pink-500 mt-1">{activeGame.hint}</p>}
                                                     </div>
-                                                    <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
-                                                    <p className="text-xs text-slate-500 mt-1 italic">"{nudge.suggestion}"</p>
+                                                    <div className="text-center py-6">
+                                                        <p className="text-4xl font-black text-slate-800 tracking-[0.3em]">{activeGame.scrambled}</p>
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            {/* Common Wager Display */}
+                                            {activeGame.wager && (
+                                                <div className="p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-2xl text-center">
+                                                    <p className="text-[10px] font-bold text-purple-600 uppercase">💝 Wager</p>
+                                                    <p className="text-sm font-bold text-slate-700 mt-1">{activeGame.wager}</p>
                                                 </div>
+                                            )}
+
+                                            {/* Turn Indicator & Input */}
+                                            {(() => {
+                                                const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
+                                                const isMyTurn = currentTurn === role;
+                                                const turnName = currentTurn === 'his' ? (husbandName || 'Him') : (wifeName || 'Her');
+
+                                                return (
+                                                    <>
+                                                        <div className={`p-3 rounded-2xl text-center ${isMyTurn ? 'bg-green-50 border-2 border-green-200' : 'bg-slate-100 border-2 border-slate-200'}`}>
+                                                            <p className="text-xs font-bold">
+                                                                {isMyTurn ? <span className="text-green-600">🎯 Your turn to guess!</span> : <span className="text-slate-500">⏳ Waiting for {turnName}...</span>}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Scramble Input */}
+                                                        {activeGame.type === 'word_scramble' && (
+                                                            <input
+                                                                type="text"
+                                                                value={gameAnswer}
+                                                                onChange={(e) => setGameAnswer(e.target.value)}
+                                                                placeholder={isMyTurn ? "Your answer..." : "Wait for your turn..."}
+                                                                disabled={!isMyTurn}
+                                                                className={`w-full p-4 border rounded-2xl text-center text-lg font-bold uppercase outline-none ${isMyTurn ? 'bg-slate-50 border-slate-200 focus:border-purple-300' : 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed'}`}
+                                                            />
+                                                        )}
+
+                                                        <button
+                                                            onClick={() => submitGameAnswer(activeGame.id, gameAnswer)}
+                                                            disabled={!gameAnswer || !isMyTurn}
+                                                            className="w-full py-4 text-sm font-black text-white bg-purple-600 rounded-2xl disabled:opacity-50 mt-2"
+                                                        >
+                                                            {isMyTurn ? 'Submit Answer' : 'Not Your Turn'}
+                                                        </button>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    );
+                                }
+
+                                // 2a. CREATE NEW LETTER LINK UI
+                                if (selectedGame === 'letter_link') {
+                                    return (
+                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-blue-100 p-6 space-y-4">
+                                            <h3 className="text-center text-sm font-black text-blue-600 uppercase">New Letter Link Game</h3>
+                                            <p className="text-xs text-center text-slate-400">Classic word building with a personalized twist!</p>
+                                            <input
+                                                type="text"
+                                                placeholder="Optional wager for the winner..."
+                                                className="w-full p-4 bg-blue-50 border border-blue-100 rounded-2xl text-sm outline-none focus:border-blue-300"
+                                                id="ll-wager-input"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    const wager = document.getElementById('ll-wager-input')?.value || '';
+                                                    createLetterLinkGame(wager);
+                                                    setSelectedGame(null);
+                                                }}
+                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl shadow-lg"
+                                            >
+                                                🧩 Start Game
+                                            </button>
+                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
+                                        </div>
+                                    );
+                                }
+
+                                // 2. CREATE NEW SCRAMBLE (Existing)
+                                if (selectedGame === 'word_scramble') {
+                                    return (
+                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                            <h3 className="text-center text-sm font-black text-purple-600 uppercase">New Word Scramble</h3>
+                                            <input
+                                                type="text"
+                                                placeholder="Optional wager... (e.g., 'Loser gives a massage')"
+                                                className="w-full p-4 bg-purple-50 border border-purple-100 rounded-2xl text-sm outline-none focus:border-purple-300"
+                                                id="wager-input"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    const wager = document.getElementById('wager-input')?.value || '';
+                                                    createWordPuzzle(wager);
+                                                    setSelectedGame(null); // Return to lobby
+                                                }}
+                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-lg"
+                                            >
+                                                🎲 Generate Puzzle
+                                            </button>
+                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
+                                        </div>
+                                    );
+                                }
+
+                                // 3. GAME LOBBY (Default)
+                                return (
+                                    <div className="space-y-4">
+                                        {/* Active Games List */}
+                                        {activeGames.length > 0 && (
+                                            <div className="space-y-2">
+                                                <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Games</h3>
+                                                {activeGames.map(game => {
+                                                    const currentTurn = game.currentTurn || (game.createdBy === 'his' ? 'hers' : 'his');
+                                                    const isMyTurn = currentTurn === role;
+                                                    return (
+                                                        <button
+                                                            key={game.id}
+                                                            onClick={() => setCurrentGameId(game.id)}
+                                                            className={`w-full p-4 rounded-2xl border text-left transition-all ${isMyTurn ? 'bg-white border-purple-200 shadow-md ring-2 ring-purple-100' : 'bg-slate-50 border-slate-100 opacity-80'}`}
+                                                        >
+                                                            <div className="flex justify-between items-center mb-1">
+                                                                <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? 'Word Scramble' : 'Letter Link'}</span>
+                                                                {isMyTurn && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
+                                                            </div>
+                                                            <div className="flex justify-between items-end">
+                                                                <div className="text-sm font-bold text-slate-700">
+                                                                    {game.type === 'word_scramble' ? (game.scrambled || 'Puzzle') : 'Ongoing Match'}
+                                                                </div>
+                                                                <div className="text-xs text-slate-400">
+                                                                    vs {game.creatorName === (husbandName || 'Husband') ? (wifeName || 'Wife') : (husbandName || 'Husband')}
+                                                                </div>
+                                                            </div>
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
-                                            <div className="flex gap-2 pt-2 border-t border-slate-50">
-                                                <button onClick={() => window.open(calendarUrl, '_blank')} className="flex-1 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-[10px] font-black uppercase text-blue-600 flex items-center justify-center gap-2 transition-all">
-                                                    <Calendar className="w-4 h-4" />
-                                                    Add to Google
+                                        )}
+
+                                        {/* Create New Game Menu */}
+                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                            <h3 className="text-center text-sm font-black text-purple-600 uppercase">Start New Game</h3>
+                                            <div className="grid grid-cols-1 gap-3">
+                                                <button
+                                                    onClick={() => setSelectedGame('word_scramble')}
+                                                    className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-100 rounded-2xl text-left hover:border-purple-300 transition-all flex items-center gap-4"
+                                                >
+                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔤</div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 text-sm">Word Scramble</p>
+                                                        <p className="text-[10px] text-slate-500">Unscramble personalized words</p>
+                                                    </div>
                                                 </button>
-                                                <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
-                                                    {copiedId === `n-${time}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                                    {copiedId === `n-${time}` ? 'Copied!' : 'Copy for iPhone'}
+
+                                                <button
+                                                    onClick={() => setSelectedGame('letter_link')}
+                                                    className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-100 rounded-2xl text-left hover:border-blue-300 transition-all flex items-center gap-4"
+                                                >
+                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🧩</div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 text-sm">Letter Link</p>
+                                                        <p className="text-[10px] text-slate-500">Scrabble-style with Memory Checks!</p>
+                                                    </div>
                                                 </button>
                                             </div>
                                         </div>
-                                    );
-                                })}
-                            </div>
-
+                                    </div>
+                                );
+                            })()}
+                            <p className="text-xs text-slate-400">Coming soon...</p>
                         </div>
-                    )}
+                                        </div>
+        </div>
+                                </div >
+                            </div >
+                        )}
 
-                    {/* NEW: Conflict Resolution View */}
-                    {view === 'resolve' && (
-                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-2 pt-2">
-                                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
-                                    <Anchor className="w-7 h-7 text-orange-600" />
+{/* Scoreboard with Points */ }
+<div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+    <div className="flex items-center gap-2 justify-center">
+        <Trophy className="w-5 h-5 text-yellow-500" />
+        <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
+    </div>
+
+    {/* Timeline Filter */}
+    <div className="flex justify-center gap-2">
+        {[
+            { id: '7days', label: '7 Days' },
+            { id: '30days', label: '30 Days' },
+            { id: 'all', label: 'All Time' }
+        ].map(filter => (
+            <button
+                key={filter.id}
+                onClick={() => setScoreboardFilter(filter.id)}
+                className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase transition-all ${scoreboardFilter === filter.id
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                    }`}
+            >
+                {filter.label}
+            </button>
+        ))}
+    </div>
+
+    {(() => {
+        const now = new Date();
+        const filteredHistory = gameHistory.filter(g => {
+            if (scoreboardFilter === 'all') return true;
+            const gameDate = g.solvedAt?.toDate ? g.solvedAt.toDate() : new Date(g.solvedAt);
+            const daysDiff = Math.floor((now - gameDate) / (1000 * 60 * 60 * 24));
+            return scoreboardFilter === '7days' ? daysDiff <= 7 : daysDiff <= 30;
+        });
+        const hisWins = filteredHistory.filter(g => g.solvedBy === 'his').length;
+        const hersWins = filteredHistory.filter(g => g.solvedBy === 'hers').length;
+
+        return (
+            <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-4 bg-blue-50 rounded-2xl">
+                    <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
+                    <p className="text-3xl font-black text-blue-600">{hisWins} 🏆</p>
+                    <p className="text-[9px] text-blue-400">wins</p>
+                </div>
+                <div className="text-center p-4 bg-rose-50 rounded-2xl">
+                    <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
+                    <p className="text-3xl font-black text-rose-600">{hersWins} 🏆</p>
+                    <p className="text-[9px] text-rose-400">wins</p>
+                </div>
+            </div>
+        );
+    })()}
+
+    {gameHistory.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Recent Games</p>
+            {gameHistory.slice(0, 5).map((game, i) => (
+                <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <span className="text-xs font-bold text-slate-600">{game.word}</span>
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-purple-600">+{game.points || 10} pts</span>
+                        <span className="text-[9px] text-slate-400">{game.solverName}</span>
+                    </div>
+                </div>
+            ))}
+        </div>
+    )}
+</div>
+
+{/* Wager Debts Tracker */ }
+<div className="bg-white rounded-[2.5rem] shadow-xl border border-pink-100 p-6 space-y-4">
+    <div className="flex items-center gap-2 justify-center">
+        <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
+        <h3 className="text-sm font-black text-slate-800 uppercase">Wager Tracker</h3>
+    </div>
+    <p className="text-[10px] text-center text-slate-400">Track fun wagers and rewards owed!</p>
+
+    {/* Add New Debt */}
+    <div className="flex flex-col gap-2">
+        <input
+            type="text"
+            id="new-debt-input"
+            placeholder="e.g., Back massage, Dinner choice..."
+            className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-pink-300"
+        />
+        <select id="new-debt-owner" className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none">
+            <option value="his">{husbandName || 'He'} owes</option>
+            <option value="hers">{wifeName || 'She'} owes</option>
+        </select>
+    </div>
+    <button
+        onClick={() => {
+            const input = document.getElementById('new-debt-input');
+            const owner = document.getElementById('new-debt-owner');
+            if (input.value.trim()) {
+                const newDebt = {
+                    id: Date.now(),
+                    description: input.value.trim(),
+                    owedBy: owner.value,
+                    paid: false,
+                    createdAt: new Date().toISOString()
+                };
+                const updatedDebts = [...gameDebts, newDebt];
+                setGameDebts(updatedDebts);
+                localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
+                input.value = '';
+            }
+        }}
+        className="w-full py-3 bg-pink-500 text-white font-bold text-xs rounded-xl"
+    >
+        ➕ Add Wager
+    </button>
+
+    {/* Debts List */}
+    {gameDebts.length > 0 && (
+        <div className="space-y-2 pt-2 border-t border-slate-100">
+            <p className="text-[10px] font-bold text-slate-400 uppercase">Outstanding Wagers</p>
+            {gameDebts.filter(d => !d.paid).map(debt => (
+                <div key={debt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                        <button
+                            onClick={() => {
+                                const updatedDebts = gameDebts.map(d =>
+                                    d.id === debt.id ? { ...d, paid: true } : d
+                                );
+                                setGameDebts(updatedDebts);
+                                localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
+                            }}
+                            className="w-6 h-6 rounded-full border-2 border-pink-300 bg-white hover:bg-pink-100 flex items-center justify-center transition-all"
+                        >
+                            <span className="text-pink-300 text-sm">💕</span>
+                        </button>
+                        <div>
+                            <p className="text-xs font-bold text-slate-600">{debt.description}</p>
+                            <p className="text-[9px] text-slate-400">
+                                {debt.owedBy === 'his' ? (husbandName || 'He') : (wifeName || 'She')} owes
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            ))}
+
+            {/* Paid Debts */}
+            {gameDebts.filter(d => d.paid).length > 0 && (
+                <>
+                    <p className="text-[10px] font-bold text-green-500 uppercase pt-2">✅ Paid Up</p>
+                    {gameDebts.filter(d => d.paid).slice(0, 3).map(debt => (
+                        <div key={debt.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl opacity-60">
+                            <div className="flex items-center gap-3">
+                                <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
+                                    <Check className="w-4 h-4 text-white" />
                                 </div>
-                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
-                                <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+                                <p className="text-xs text-slate-500 line-through">{debt.description}</p>
                             </div>
-
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
-                                {/* Progress */}
-                                <div className="flex gap-1">
-                                    {CONFLICT_STEPS.map((_, i) => (
-                                        <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
-                                    ))}
-                                </div>
-
-                                {/* Current Step */}
-                                <div className="text-center py-4">
-                                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
-                                    <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
-                                </div>
-
-                                <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
-                                    <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
-                                </div>
-
-                                <button
-                                    onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
-                                    className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
-                                >
-                                    <Share2 className="w-4 h-4" />
-                                    Share: "{CONFLICT_STEPS[conflictStep].action}"
-                                </button>
-
-                                <div className="flex gap-3">
-                                    <button
-                                        onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
-                                        disabled={conflictStep === 0}
-                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
-                                    >
-                                        ← Previous
-                                    </button>
-                                    <button
-                                        onClick={() => {
-                                            if (conflictStep < CONFLICT_STEPS.length - 1) {
-                                                setConflictStep(conflictStep + 1);
-                                            } else {
-                                                alert('🎉 You completed the conflict resolution process! Great job working through this together.');
-                                                setConflictStep(0);
-                                            }
-                                        }}
-                                        className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
-                                    >
-                                        {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
-                                    </button>
-                                </div>
-                            </div>
-
                             <button
-                                onClick={() => { setConflictStep(0); setView('hub'); }}
-                                className="w-full py-3 text-slate-400 text-xs font-bold"
+                                onClick={() => {
+                                    const updatedDebts = gameDebts.filter(d => d.id !== debt.id);
+                                    setGameDebts(updatedDebts);
+                                    localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
+                                }}
+                                className="text-slate-400 hover:text-red-500"
                             >
-                                Exit to Hub
+                                <Trash2 className="w-3 h-3" />
                             </button>
                         </div>
-                    )}
-                </div>
-            </main>
+                    ))}
+                </>
+            )}
+        </div>
+    )}
 
-            {/* Navigation (Fixed) */}
-            {
-                view !== 'home' && (
-                    <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
+    {gameDebts.length === 0 && (
+        <p className="text-xs text-center text-slate-400 py-4">No wagers yet! Win a game and set a fun reward 🎁</p>
+    )}
+</div>
+                    </div >
+                )}
+
+{
+    view === 'nudge' && (
+        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+            <div className="text-center space-y-2 pt-2">
+                <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg"><Bell className="w-7 h-7 text-rose-600" /></div>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
+                <p className="text-xs text-slate-400">Set daily reminders to nurture your connection</p>
+            </div>
+
+            {/* Notification Settings (Moved to Top) */}
+            <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-100 p-6 space-y-4">
+                <div className="flex items-center gap-2 justify-center">
+                    <Bell className="w-5 h-5 text-rose-500" />
+                    <h3 className="text-sm font-black text-slate-800 uppercase">Notifications</h3>
+                </div>
+
+                {notificationPermission !== 'granted' ? (
+                    <div className="text-center space-y-3">
+                        <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
+
+                        {/* iOS specific hint */}
+                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
+                            <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
+                            <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
+                            <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
+                                <li>Tap the <strong>Share</strong> button (box with arrow)</li>
+                                <li>Select <strong>Add to Home Screen</strong></li>
+                                <li>Open the app from your home screen</li>
+                            </ol>
+                        </div>
+
+                        <button
+                            onClick={requestNotificationPermission}
+                            className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
+                        >
+                            🔔 Enable Notifications
                         </button>
-                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+                        {notificationPermission === 'denied' && (
+                            <p className="text-xs text-red-500">Notifications are blocked. Check your browser settings to enable them.</p>
+                        )}
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
+
+                        {[
+                            { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn to guess' },
+                            { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from your partner' },
+                            { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for your date nights' },
+                            { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a loving message' }
+                        ].map(pref => (
+                            <div key={pref.key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                                <div className="flex items-center gap-3">
+                                    <span className="text-xl">{pref.emoji}</span>
+                                    <div>
+                                        <p className="text-xs font-bold text-slate-700">{pref.label}</p>
+                                        <p className="text-xs text-slate-400">{pref.desc}</p>
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])}
+                                    className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}
+                                >
+                                    <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
+                                </button>
+                            </div>
+                        ))}
+
+                        <button
+                            onClick={() => sendNotification('Test Notification 💕', 'This is a test from Unity Bridge!', 'general')}
+                            className="w-full py-3 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all"
+                        >
+                            🔔 Send Test Notification
                         </button>
-                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
-                            <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
-                        </button>
-                        <button onClick={() => setView('date')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'date' ? 'text-pink-500 scale-110' : 'text-slate-500'}`}>
-                            <Calendar className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Date</span>
-                        </button>
-                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
-                            <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
-                        </button>
-                    </nav>
-                )
-            }
-        </div >
-    );
+                    </div>
+                )}
+            </div>
+
+            <div className="space-y-3">
+                {['Morning', 'Lunch', 'Evening'].map(time => {
+                    const nudge = NUDGE_DATA[time];
+                    const NudgeIcon = nudge.icon;
+                    const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}\n\nOpen Unity Bridge to connect with your spouse.`)}&recur=RRULE:FREQ=DAILY`;
+                    const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
+                    return (
+                        <div key={time} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg space-y-3">
+                            <div className="flex items-start gap-3">
+                                <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center shrink-0">
+                                    <NudgeIcon className="w-5 h-5 text-rose-600" />
+                                </div>
+                                <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-lg font-black text-slate-800 tracking-tight">{time} Check-in</p>
+                                        <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{nudge.time}</span>
+                                    </div>
+                                    <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
+                                    <p className="text-xs text-slate-500 mt-1 italic">"{nudge.suggestion}"</p>
+                                </div>
+                            </div>
+                            <div className="flex gap-2 pt-2 border-t border-slate-50">
+                                <button onClick={() => window.open(calendarUrl, '_blank')} className="flex-1 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-[10px] font-black uppercase text-blue-600 flex items-center justify-center gap-2 transition-all">
+                                    <Calendar className="w-4 h-4" />
+                                    Add to Google
+                                </button>
+                                <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
+                                    {copiedId === `n-${time}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                    {copiedId === `n-${time}` ? 'Copied!' : 'Copy for iPhone'}
+                                </button>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+
+        </div>
+    )
+}
+
+{/* NEW: Conflict Resolution View */ }
+{
+    view === 'resolve' && (
+        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+            <div className="text-center space-y-2 pt-2">
+                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                    <Anchor className="w-7 h-7 text-orange-600" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
+                <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
+                {/* Progress */}
+                <div className="flex gap-1">
+                    {CONFLICT_STEPS.map((_, i) => (
+                        <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
+                    ))}
+                </div>
+
+                {/* Current Step */}
+                <div className="text-center py-4">
+                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
+                    <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
+                </div>
+
+                <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
+                    <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
+                </div>
+
+                <button
+                    onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
+                    className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
+                >
+                    <Share2 className="w-4 h-4" />
+                    Share: "{CONFLICT_STEPS[conflictStep].action}"
+                </button>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
+                        disabled={conflictStep === 0}
+                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
+                    >
+                        ← Previous
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (conflictStep < CONFLICT_STEPS.length - 1) {
+                                setConflictStep(conflictStep + 1);
+                            } else {
+                                alert('🎉 You completed the conflict resolution process! Great job working through this together.');
+                                setConflictStep(0);
+                            }
+                        }}
+                        className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
+                    >
+                        {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
+                    </button>
+                </div>
+            </div>
+
+            <button
+                onClick={() => { setConflictStep(0); setView('hub'); }}
+                className="w-full py-3 text-slate-400 text-xs font-bold"
+            >
+                Exit to Hub
+            </button>
+        </div>
+    )
+}
+            </div >
+        </main >
+
+    {/* Navigation (Fixed) */ }
+{
+    view !== 'home' && (
+        <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+            <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
+            </button>
+            <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+            </button>
+            <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
+                <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
+            </button>
+            <button onClick={() => setView('date')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'date' ? 'text-pink-500 scale-110' : 'text-slate-500'}`}>
+                <Calendar className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Date</span>
+            </button>
+            <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
+            </button>
+        </nav>
+    )
+}
+    </div >
+);
 };
 
 export default App;
