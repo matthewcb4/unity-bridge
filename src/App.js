@@ -103,6 +103,8 @@ const App = () => {
 
     const [wifeName, setWifeName] = useState(localStorage.getItem('wife_name') || '');
     const [husbandName, setHusbandName] = useState(localStorage.getItem('husband_name') || '');
+    const [wifePetName, setWifePetName] = useState(localStorage.getItem('wife_pet_name') || '');
+    const [husbandPetName, setHusbandPetName] = useState(localStorage.getItem('husband_pet_name') || '');
     const [coupleCode, setCoupleCode] = useState(localStorage.getItem('couple_code') || '');
 
     const [bridgeItems, setBridgeItems] = useState([]);
@@ -111,7 +113,7 @@ const App = () => {
     const [touchIdeas, setTouchIdeas] = useState({ daily: [], sensual: [], initiation: [] });
     const [pulse, setPulse] = useState(null);
 
-    const [vaultStyle, setVaultStyle] = useState('gentle');
+    const [vaultStyle, setVaultStyle] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [inputText, setInputText] = useState('');
@@ -269,6 +271,7 @@ const App = () => {
         setIsRefreshing(true);
         const sender = role === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
         const receiver = role === 'his' ? (wifeName || 'Wife') : (husbandName || 'Husband');
+        const receiverPetName = role === 'his' ? (wifePetName || wifeName || 'babe') : (husbandPetName || husbandName || 'babe');
         const partnerLanguage = role === 'his' ? herLoveLanguage : hisLoveLanguage;
 
         // Define categories based on partner's love language
@@ -285,10 +288,12 @@ const App = () => {
         const systemPrompt = `You are a relationship expert helping ${sender} write loving messages to ${receiver}.
 
 Partner's PRIMARY love language: ${partnerLanguage}
+Partner's pet name/nickname: "${receiverPetName}" - USE THIS NAME when addressing them in messages!
 
 Generate COMPLETE, READY-TO-SEND text messages that ${sender} can copy and paste directly to send to ${receiver}. 
+Use the pet name "${receiverPetName}" naturally in the messages (e.g., "Hey ${receiverPetName}", "${receiverPetName}, I love you").
 DO NOT write instructions like "Text her..." or "Leave a note saying...". 
-Write the ACTUAL MESSAGE CONTENT ONLY - as if you are ${sender} speaking directly to ${receiver}.
+Write the ACTUAL MESSAGE CONTENT ONLY - as if you are ${sender} speaking directly to ${receiverPetName}.
 
 For each category, write 3 heartfelt messages:
 - Category "${cats.primary[0]}": 3 complete messages
@@ -327,7 +332,7 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["message1", "message2", 
             if (analysisTimeFilter === 'all') return items;
 
             return items.filter(item => {
-                const itemDate = item.createdAt?.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
+                const itemDate = item.timestamp?.toDate ? item.timestamp.toDate() : new Date(item.timestamp);
                 const daysDiff = Math.floor((now - itemDate) / (1000 * 60 * 60 * 24));
                 const dayOfWeek = itemDate.getDay(); // 0=Sunday, 6=Saturday
 
@@ -378,7 +383,7 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["message1", "message2", 
 
         const recentMessages = filteredItems.slice(0, 30).map(i => {
             const author = i.author === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
-            const date = i.createdAt?.toDate ? i.createdAt.toDate().toLocaleDateString() : '';
+            const date = i.timestamp?.toDate ? i.timestamp.toDate().toLocaleDateString() : '';
             return `[${date}] ${author}: "${i.content}"`;
         }).join('\n');
 
@@ -838,6 +843,28 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }}
                             placeholder="Name"
                             className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-rose-300'}`}
+                        />
+                    </div>
+                </div>
+
+                {/* Pet Names Row */}
+                <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                        <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
+                        <input
+                            value={husbandPetName}
+                            onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
+                            placeholder="e.g. honey, babe"
+                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
+                        />
+                    </div>
+                    <div className="space-y-1">
+                        <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
+                        <input
+                            value={wifePetName}
+                            onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
+                            placeholder="e.g. sweetie, love"
+                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
                         />
                     </div>
                 </div>
