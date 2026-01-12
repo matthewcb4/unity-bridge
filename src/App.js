@@ -725,7 +725,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     }
 
     const renderHome = () => (
-        <div className="flex flex-col items-center h-full px-4 space-y-4 py-4 overflow-y-auto">
+        <div className="flex flex-col items-center px-4 space-y-4 py-4">
             {/* Compact Header */}
             <div className="text-center space-y-1">
                 <div className="bg-rose-100 p-4 rounded-full inline-block border-2 border-white shadow-lg">
