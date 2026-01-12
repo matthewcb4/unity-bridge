@@ -319,8 +319,31 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["message1", "message2", 
     const generatePulse = async () => {
         if (bridgeItems.length === 0) return;
         setIsGenerating(true);
-        const logs = bridgeItems.slice(0, 10).map(i => `${i.author}: ${i.content}`).join('\n');
-        const systemPrompt = `Analyze logs:\n${logs}\nJSON: { "vibe": "one word", "pattern": "one sentence", "focus": "one goal" }`;
+
+        const recentMessages = bridgeItems.slice(0, 20).map(i => {
+            const author = i.author === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
+            return `${author}: "${i.content}"`;
+        }).join('\n');
+
+        const systemPrompt = `You are a licensed marriage counselor analyzing a couple's recent communication log. 
+        
+Couple: ${husbandName || 'Husband'} and ${wifeName || 'Wife'}
+Their recent shared messages:
+${recentMessages}
+
+Provide a comprehensive relationship analysis in this exact JSON format:
+{
+    "overallTone": "One word describing the emotional climate (e.g., 'Supportive', 'Tense', 'Loving', 'Disconnected')",
+    "communicationStyle": "Brief description of how they communicate with each other",
+    "strengths": ["strength 1", "strength 2", "strength 3"],
+    "areasForGrowth": ["area 1", "area 2"],
+    "patterns": "Describe any recurring themes or dynamics you notice",
+    "recommendation": "One actionable suggestion for their counselor or for them to work on",
+    "healthScore": "A number from 1-10 rating overall relationship health based on these messages"
+}
+
+Return ONLY valid JSON, no other text.`;
+
         const result = await callGemini(systemPrompt);
         if (result) setPulse(result);
         setIsGenerating(false);
@@ -1207,23 +1230,129 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 </button>
                             </div>
 
-                            {/* Pulse Analysis - Compact */}
-                            <div className={`rounded-2xl shadow-lg border p-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
+                            {/* Relationship Analysis for Counselor */}
+                            <div className={`rounded-2xl shadow-lg border p-4 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
                                 <div className="flex justify-between items-center">
-                                    <h2 className={`text-xs font-black uppercase ${darkMode ? 'text-rose-400' : 'text-rose-600'}`}>Pulse Analysis</h2>
-                                    <button onClick={generatePulse} className="text-[9px] font-bold text-rose-600 border border-rose-200 px-3 py-1 rounded-full uppercase hover:bg-rose-50">Analyze</button>
+                                    <h2 className={`text-xs font-black uppercase flex items-center gap-2 ${darkMode ? 'text-rose-400' : 'text-rose-600'}`}>
+                                        📊 Relationship Analysis
+                                    </h2>
+                                    <button
+                                        onClick={generatePulse}
+                                        disabled={isGenerating || bridgeItems.length === 0}
+                                        className={`text-[9px] font-bold px-3 py-1.5 rounded-full uppercase flex items-center gap-1 ${isGenerating ? 'opacity-50' : ''} ${darkMode ? 'bg-rose-900/50 text-rose-400 border border-rose-700' : 'bg-rose-50 text-rose-600 border border-rose-200 hover:bg-rose-100'}`}
+                                    >
+                                        {isGenerating ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCcw className="w-3 h-3" />}
+                                        {isGenerating ? 'Analyzing...' : 'Generate Report'}
+                                    </button>
                                 </div>
+
                                 {pulse && (
-                                    <div className="grid grid-cols-3 gap-2 mt-3">
-                                        <div className={`p-2 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                                            <p className="text-[7px] font-bold text-slate-400 uppercase">Vibe</p>
-                                            <p className={`text-xs font-black ${darkMode ? 'text-rose-400' : 'text-rose-600'}`}>"{pulse.vibe}"</p>
+                                    <div className="space-y-3">
+                                        {/* Health Score */}
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${(pulse.healthScore >= 7) ? 'bg-green-100 text-green-600' :
+                                                    (pulse.healthScore >= 4) ? 'bg-yellow-100 text-yellow-600' :
+                                                        'bg-red-100 text-red-600'
+                                                }`}>
+                                                {pulse.healthScore}/10
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className={`text-lg font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{pulse.overallTone}</p>
+                                                <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{pulse.communicationStyle}</p>
+                                            </div>
                                         </div>
-                                        <div className={`p-2 rounded-xl col-span-2 ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                                            <p className="text-[7px] font-bold text-slate-400 uppercase">Pattern</p>
-                                            <p className={`text-[10px] font-bold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{pulse.pattern}</p>
+
+                                        {/* Strengths */}
+                                        {pulse.strengths && pulse.strengths.length > 0 && (
+                                            <div className={`p-3 rounded-xl ${darkMode ? 'bg-green-900/30 border border-green-800' : 'bg-green-50 border border-green-100'}`}>
+                                                <p className="text-[9px] font-black text-green-600 uppercase mb-1.5">💪 Strengths</p>
+                                                <ul className="space-y-1">
+                                                    {pulse.strengths.map((s, i) => (
+                                                        <li key={i} className={`text-xs ${darkMode ? 'text-green-400' : 'text-green-700'}`}>• {s}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Areas for Growth */}
+                                        {pulse.areasForGrowth && pulse.areasForGrowth.length > 0 && (
+                                            <div className={`p-3 rounded-xl ${darkMode ? 'bg-amber-900/30 border border-amber-800' : 'bg-amber-50 border border-amber-100'}`}>
+                                                <p className="text-[9px] font-black text-amber-600 uppercase mb-1.5">🌱 Areas for Growth</p>
+                                                <ul className="space-y-1">
+                                                    {pulse.areasForGrowth.map((a, i) => (
+                                                        <li key={i} className={`text-xs ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>• {a}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Patterns */}
+                                        {pulse.patterns && (
+                                            <div className={`p-3 rounded-xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                                <p className={`text-[9px] font-black uppercase mb-1 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>🔄 Patterns Observed</p>
+                                                <p className={`text-xs ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{pulse.patterns}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Recommendation */}
+                                        {pulse.recommendation && (
+                                            <div className={`p-3 rounded-xl ${darkMode ? 'bg-blue-900/30 border border-blue-800' : 'bg-blue-50 border border-blue-100'}`}>
+                                                <p className="text-[9px] font-black text-blue-600 uppercase mb-1">💡 Counselor Recommendation</p>
+                                                <p className={`text-xs ${darkMode ? 'text-blue-400' : 'text-blue-700'}`}>{pulse.recommendation}</p>
+                                            </div>
+                                        )}
+
+                                        {/* Share with Counselor Button */}
+                                        <div className="flex gap-2 pt-2">
+                                            <button
+                                                onClick={() => {
+                                                    const report = `UNITY BRIDGE - Relationship Analysis Report
+═══════════════════════════════════════
+Couple: ${husbandName || 'Husband'} & ${wifeName || 'Wife'}
+Generated: ${new Date().toLocaleDateString()}
+
+HEALTH SCORE: ${pulse.healthScore}/10
+EMOTIONAL TONE: ${pulse.overallTone}
+COMMUNICATION STYLE: ${pulse.communicationStyle}
+
+STRENGTHS:
+${pulse.strengths?.map(s => `  ✓ ${s}`).join('\n') || 'N/A'}
+
+AREAS FOR GROWTH:
+${pulse.areasForGrowth?.map(a => `  • ${a}`).join('\n') || 'N/A'}
+
+PATTERNS OBSERVED:
+${pulse.patterns || 'N/A'}
+
+RECOMMENDATION:
+${pulse.recommendation || 'N/A'}
+
+───────────────────────────────────────
+Generated by Unity Bridge - Relationship OS`;
+                                                    navigator.clipboard.writeText(report);
+                                                    alert('Report copied to clipboard! You can paste it into an email or document to share with your counselor.');
+                                                }}
+                                                className={`flex-1 py-3 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}
+                                            >
+                                                <Copy className="w-3 h-3" /> Copy Report
+                                            </button>
+                                            <button
+                                                onClick={() => {
+                                                    const report = encodeURIComponent(`UNITY BRIDGE - Relationship Analysis Report\n\nCouple: ${husbandName || 'Husband'} & ${wifeName || 'Wife'}\nGenerated: ${new Date().toLocaleDateString()}\n\nHEALTH SCORE: ${pulse.healthScore}/10\nEMOTIONAL TONE: ${pulse.overallTone}\nCOMMUNICATION STYLE: ${pulse.communicationStyle}\n\nSTRENGTHS:\n${pulse.strengths?.map(s => `  ✓ ${s}`).join('\n') || 'N/A'}\n\nAREAS FOR GROWTH:\n${pulse.areasForGrowth?.map(a => `  • ${a}`).join('\n') || 'N/A'}\n\nPATTERNS OBSERVED:\n${pulse.patterns || 'N/A'}\n\nRECOMMENDATION:\n${pulse.recommendation || 'N/A'}`);
+                                                    window.open(`mailto:?subject=Unity Bridge - Relationship Analysis Report&body=${report}`);
+                                                }}
+                                                className="flex-1 py-3 rounded-xl text-[10px] font-bold uppercase flex items-center justify-center gap-2 bg-blue-600 text-white"
+                                            >
+                                                <Send className="w-3 h-3" /> Email to Counselor
+                                            </button>
                                         </div>
                                     </div>
+                                )}
+
+                                {!pulse && (
+                                    <p className={`text-xs text-center py-4 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>
+                                        Tap "Generate Report" to create a counselor-ready analysis of your recent communication
+                                    </p>
                                 )}
                             </div>
 
