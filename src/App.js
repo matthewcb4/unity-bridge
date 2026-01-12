@@ -133,6 +133,7 @@ const App = () => {
     const [currentGame, setCurrentGame] = useState(null);
     const [gameHistory, setGameHistory] = useState([]);
     const [gameAnswer, setGameAnswer] = useState('');
+    const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
 
     // Initialize PWA and Viewport
     useEffect(() => {
@@ -206,7 +207,7 @@ const App = () => {
         }, (err) => console.error("Game Sync Error:", err));
 
         // Listen for game history
-        const historyRef = collection(db, sharedNamespace, 'game_history');
+        const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
         const unsubHistory = onSnapshot(historyRef, (snap) => {
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
@@ -488,10 +489,8 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
         if (isCorrect) {
             try {
-                const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-
-                // Save to history
-                const historyRef = collection(db, sharedNamespace, 'game_history');
+                // Save to history with correct path
+                const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
                 await addDoc(historyRef, {
                     type: currentGame.type,
                     word: currentGame.word,
@@ -500,6 +499,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     creatorName: currentGame.creatorName,
                     solvedBy: role,
                     solverName: playerName,
+                    points: 10, // Base points for solving
                     completedAt: serverTimestamp()
                 });
 
@@ -1019,7 +1019,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                         </button>
                                     </div>
                                 </div>
-                            ) : (
+                            ) : selectedGame === 'word_scramble' ? (
                                 <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
                                     <h3 className="text-center text-sm font-black text-purple-600 uppercase">Create a Puzzle for Your Partner</h3>
                                     <input
@@ -1037,41 +1037,91 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     >
                                         🎲 Generate Word Puzzle
                                     </button>
+                                    <button
+                                        onClick={() => setSelectedGame(null)}
+                                        className="w-full py-3 text-xs font-bold text-slate-400"
+                                    >
+                                        ← Back to Games Menu
+                                    </button>
+                                </div>
+                            ) : null}
+
+                            {/* Game Menu - show when no game selected and no active game */}
+                            {!selectedGame && (!currentGame || currentGame.solved) && (
+                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                    <h3 className="text-center text-sm font-black text-purple-600 uppercase">Choose a Game</h3>
+                                    <div className="space-y-3">
+                                        <button
+                                            onClick={() => setSelectedGame('word_scramble')}
+                                            className="w-full p-5 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl text-left hover:border-purple-400 transition-all"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-purple-100 rounded-xl flex items-center justify-center text-2xl">🔤</div>
+                                                <div>
+                                                    <p className="font-black text-slate-800">Word Scramble</p>
+                                                    <p className="text-xs text-slate-500">Unscramble personalized words • 10 pts</p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                        <div className="w-full p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-left opacity-50">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-2xl">🎯</div>
+                                                <div>
+                                                    <p className="font-black text-slate-600">Trivia Challenge</p>
+                                                    <p className="text-xs text-slate-400">Coming soon...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="w-full p-5 bg-slate-50 border-2 border-dashed border-slate-200 rounded-2xl text-left opacity-50">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-2xl">❤️</div>
+                                                <div>
+                                                    <p className="font-black text-slate-600">Love Quiz</p>
+                                                    <p className="text-xs text-slate-400">Coming soon...</p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             )}
 
-                            {/* Game History & Scoreboard */}
-                            {gameHistory.length > 0 && (
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                    <div className="flex items-center gap-2 justify-center">
-                                        <Trophy className="w-5 h-5 text-yellow-500" />
-                                        <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
+                            {/* Scoreboard with Points */}
+                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                <div className="flex items-center gap-2 justify-center">
+                                    <Trophy className="w-5 h-5 text-yellow-500" />
+                                    <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="text-center p-4 bg-blue-50 rounded-2xl">
+                                        <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
+                                        <p className="text-3xl font-black text-blue-600">
+                                            {gameHistory.filter(g => g.solvedBy === 'his').reduce((sum, g) => sum + (g.points || 10), 0)}
+                                        </p>
+                                        <p className="text-[9px] text-blue-400">points</p>
                                     </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="text-center p-4 bg-blue-50 rounded-2xl">
-                                            <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
-                                            <p className="text-3xl font-black text-blue-600">
-                                                {gameHistory.filter(g => g.solvedBy === 'his').length}
-                                            </p>
-                                        </div>
-                                        <div className="text-center p-4 bg-rose-50 rounded-2xl">
-                                            <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
-                                            <p className="text-3xl font-black text-rose-600">
-                                                {gameHistory.filter(g => g.solvedBy === 'hers').length}
-                                            </p>
-                                        </div>
+                                    <div className="text-center p-4 bg-rose-50 rounded-2xl">
+                                        <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
+                                        <p className="text-3xl font-black text-rose-600">
+                                            {gameHistory.filter(g => g.solvedBy === 'hers').reduce((sum, g) => sum + (g.points || 10), 0)}
+                                        </p>
+                                        <p className="text-[9px] text-rose-400">points</p>
                                     </div>
+                                </div>
+                                {gameHistory.length > 0 && (
                                     <div className="space-y-2 pt-2 border-t border-slate-100">
                                         <p className="text-[10px] font-bold text-slate-400 uppercase">Recent Games</p>
                                         {gameHistory.slice(0, 5).map((game, i) => (
                                             <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
                                                 <span className="text-xs font-bold text-slate-600">{game.word}</span>
-                                                <span className="text-[10px] font-bold text-purple-600">Won by {game.solverName}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-[10px] font-bold text-purple-600">+{game.points || 10} pts</span>
+                                                    <span className="text-[9px] text-slate-400">{game.solverName}</span>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
-                                </div>
-                            )}
+                                )}
+                            </div>
                         </div>
                     )}
 
