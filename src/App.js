@@ -881,27 +881,27 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     )}
 
                     {view === 'date' && (
-                        <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-4 pt-4">
-                                <div className="w-24 h-24 bg-pink-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl">
-                                    <Heart className="w-12 h-12 text-pink-600" />
+                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-2 pt-2">
+                                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                                    <Heart className="w-8 h-8 text-pink-600" />
                                 </div>
-                                <h2 className="text-4xl font-black text-slate-800 tracking-tighter italic">Date Night</h2>
-                                <p className="text-sm text-slate-400">AI-generated date ideas just for you two</p>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Date Night</h2>
+                                <p className="text-xs text-slate-400">AI-generated date ideas just for you two</p>
                             </div>
 
-                            <div className="bg-white rounded-[3rem] shadow-xl border border-pink-100 p-6 space-y-4">
-                                <h3 className="text-xs font-black text-pink-600 uppercase tracking-widest text-center">Select Your Budget</h3>
-                                <div className="grid grid-cols-4 gap-2">
+                            <div className="bg-white rounded-[2rem] shadow-xl border border-pink-100 p-4 space-y-3">
+                                <h3 className="text-[10px] font-black text-pink-600 uppercase tracking-widest text-center">Select Your Budget</h3>
+                                <div className="grid grid-cols-4 gap-1.5">
                                     {[{ id: 'free', label: 'Free', emoji: '🆓' }, { id: 'cheap', label: '<$30', emoji: '💵' }, { id: 'moderate', label: '$30-75', emoji: '💳' }, { id: 'splurge', label: '$75+', emoji: '✨' }].map(budget => (
                                         <button
                                             key={budget.id}
                                             onClick={() => generateDateNight(budget.id)}
                                             disabled={isGenerating}
-                                            className="p-4 bg-slate-50 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 rounded-2xl text-center transition-all disabled:opacity-50"
+                                            className="p-2 bg-slate-50 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 rounded-xl text-center transition-all disabled:opacity-50"
                                         >
-                                            <span className="text-2xl block mb-1">{budget.emoji}</span>
-                                            <span className="text-[9px] font-bold text-slate-600">{budget.label}</span>
+                                            <span className="text-xl block">{budget.emoji}</span>
+                                            <span className="text-[8px] font-bold text-slate-600 leading-tight block">{budget.label}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -969,13 +969,13 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     )}
 
                     {view === 'games' && (
-                        <div className="p-6 space-y-6 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-3 pt-4">
-                                <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl">
-                                    <Gamepad2 className="w-10 h-10 text-purple-600" />
+                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-2 pt-2">
+                                <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                                    <Gamepad2 className="w-7 h-7 text-purple-600" />
                                 </div>
-                                <h2 className="text-3xl font-black text-slate-800 tracking-tighter italic">Couple Games</h2>
-                                <p className="text-sm text-slate-400">Play together, wager fun rewards!</p>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Couple Games</h2>
+                                <p className="text-xs text-slate-400">Play together, wager fun rewards!</p>
                             </div>
 
                             {/* Active Game or Create New */}
@@ -1126,23 +1126,23 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     )}
 
                     {view === 'nudge' && (
-                        <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-4 pt-4">
-                                <div className="w-24 h-24 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl"><Bell className="w-12 h-12 text-rose-600" /></div>
-                                <h2 className="text-4xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
-                                <p className="text-sm text-slate-400">Set daily reminders to nurture your connection</p>
+                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-2 pt-2">
+                                <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg"><Bell className="w-7 h-7 text-rose-600" /></div>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
+                                <p className="text-xs text-slate-400">Set daily reminders to nurture your connection</p>
                             </div>
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 {['Morning', 'Lunch', 'Evening'].map(time => {
                                     const nudge = NUDGE_DATA[time];
                                     const NudgeIcon = nudge.icon;
                                     const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}\n\nOpen Unity Bridge to connect with your spouse.`)}&recur=RRULE:FREQ=DAILY`;
                                     const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
                                     return (
-                                        <div key={time} className="p-6 bg-white border border-slate-100 rounded-[2.5rem] shadow-xl space-y-4">
-                                            <div className="flex items-start gap-4">
-                                                <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center shrink-0">
-                                                    <NudgeIcon className="w-6 h-6 text-rose-600" />
+                                        <div key={time} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg space-y-3">
+                                            <div className="flex items-start gap-3">
+                                                <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center shrink-0">
+                                                    <NudgeIcon className="w-5 h-5 text-rose-600" />
                                                 </div>
                                                 <div className="flex-1">
                                                     <div className="flex items-center gap-2">
