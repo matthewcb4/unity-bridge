@@ -138,6 +138,8 @@ const App = () => {
     const [currentGame, setCurrentGame] = useState(null);
     const [gameHistory, setGameHistory] = useState([]);
     const [gameAnswer, setGameAnswer] = useState('');
+    const [gameDebts, setGameDebts] = useState(() => JSON.parse(localStorage.getItem('game_debts') || '[]'));
+    const [scoreboardFilter, setScoreboardFilter] = useState('all'); // all, 7days, 30days
     const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
 
     // NEW: Dark Mode
@@ -1129,20 +1131,20 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                             </div>
                                         )}
                                         {/* Search and Filter */}
-                                        <div className="flex gap-2">
+                                        <div className="flex flex-col sm:flex-row gap-2">
                                             <input
                                                 type="text"
                                                 value={journalSearchText}
                                                 onChange={(e) => setJournalSearchText(e.target.value)}
-                                                placeholder="Search entries..."
-                                                className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-purple-300"
+                                                placeholder="Search..."
+                                                className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none focus:border-purple-300"
                                             />
                                             <select
                                                 value={journalFilterType}
                                                 onChange={(e) => setJournalFilterType(e.target.value)}
-                                                className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"
+                                                className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs outline-none min-w-[80px]"
                                             >
-                                                <option value="all">All Types</option>
+                                                <option value="all">All</option>
                                                 <option value="feeling">Feeling</option>
                                                 <option value="ai_log">AI Log</option>
                                                 <option value="win">Win</option>
