@@ -698,6 +698,39 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         return [...new Set(words)].filter(w => w.length >= 4);
     };
 
+    const getPersonalizedWords = () => {
+        const words = new Set();
+        // Basics
+        words.add('LOVE'); words.add('KISS'); words.add('HUG');
+        words.add('HOME'); words.add('TRUST'); words.add('FOREVER');
+
+        // Names
+        if (husbandName) words.add(husbandName.toUpperCase());
+        if (wifeName) words.add(wifeName.toUpperCase());
+
+        // Pet names (split by comma if needed, though they are usually single words)
+        if (husbandPetName) husbandPetName.split(',').forEach(n => words.add(n.trim().toUpperCase()));
+        if (wifePetName) wifePetName.split(',').forEach(n => words.add(n.trim().toUpperCase()));
+
+        // Scan journal entries for uppercase words (often meaningful) or just keywords?
+        // Simple scan for now:
+        journalItems.forEach(item => {
+            if (!item.content) return;
+            // Find words of length 4-8
+            const matches = item.content.match(/\b[A-Za-z]{4,8}\b/g);
+            if (matches) {
+                // Randomly pick one often to avoid massive lists?
+                // For now, let's just create a curated list of keywords
+                const keywords = ['DATE', 'TRIP', 'WALK', 'MOVIE', 'DINNER', 'BEACH', 'DREAM', 'SMILE', 'LAUGH'];
+                keywords.forEach(k => {
+                    if (item.content.toUpperCase().includes(k)) words.add(k);
+                });
+            }
+        });
+
+        return Array.from(words).filter(w => w.length >= 3);
+    };
+
     const scrambleWord = (word) => {
         if (word.length < 3) return word;
         const arr = word.split('');
