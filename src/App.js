@@ -184,7 +184,7 @@ const App = () => {
         }, (err) => console.error("Journal Sync Error:", err));
 
         // Listen for shared settings (love languages, names) - both partners can edit
-        const settingsRef = doc(db, sharedNamespace, 'settings');
+        const settingsRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings');
         const unsubSettings = onSnapshot(settingsRef, (snap) => {
             if (snap.exists()) {
                 const data = snap.data();
@@ -196,7 +196,7 @@ const App = () => {
         }, (err) => console.error("Settings Sync Error:", err));
 
         // Listen for active game
-        const gameRef = doc(db, sharedNamespace, 'current_game');
+        const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
         const unsubGame = onSnapshot(gameRef, (snap) => {
             if (snap.exists()) {
                 setCurrentGame({ id: snap.id, ...snap.data() });
@@ -330,8 +330,7 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["idea1", "idea2", "idea3
     const saveSettings = async (updates) => {
         if (!coupleCode || !db) return;
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            const settingsRef = doc(db, sharedNamespace, 'settings');
+            const settingsRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings');
             await setDoc(settingsRef, updates, { merge: true });
         } catch (err) {
             console.error('Settings save error:', err);
@@ -461,8 +460,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             journalItems.some(j => j.content?.toUpperCase().includes(word));
 
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            const gameRef = doc(db, sharedNamespace, 'current_game');
+            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
             await setDoc(gameRef, {
                 type: 'word_scramble',
                 word: word,
@@ -506,7 +504,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 });
 
                 // Clear current game
-                const gameRef = doc(db, sharedNamespace, 'current_game');
+                const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
                 await setDoc(gameRef, { solved: true, solvedBy: role, solverName: playerName }, { merge: true });
 
                 alert(`🎉 Correct! ${currentGame.wager ? `\n\n💝 Wager: ${currentGame.wager}` : ''}`);
@@ -523,8 +521,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         if (!coupleCode || !db) return;
         if (!window.confirm('Clear this puzzle? Both partners will lose it.')) return;
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            const gameRef = doc(db, sharedNamespace, 'current_game');
+            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'current_game');
             await setDoc(gameRef, {}, { merge: false });
             setCurrentGame(null);
         } catch (err) {
