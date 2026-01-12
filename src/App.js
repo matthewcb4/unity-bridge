@@ -13,8 +13,8 @@ import {
     getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged
 } from 'firebase/auth';
 import {
-    getFirestore, doc, setDoc, getDoc, collection,
-    onSnapshot, addDoc, serverTimestamp, query, deleteDoc
+    getFirestore, doc, setDoc, getDoc, collection, updateDoc,
+    onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
