@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
     Heart, Flame, Sparkles, MessageCircle, Copy, Check, Share2,
-    RefreshCcw, Settings, BookOpen, ChevronRight, User,
+    RefreshCcw, Settings, BookOpen, ChevronRight, User, Gamepad2, Trophy,
     Loader2, ShieldCheck as ShieldIcon, Users, AlertCircle, Hand,
     Bell, Zap, Lock, Globe, Save, Trash2, Edit3, Send,
     Clock, Calendar, ExternalLink, Moon, Coffee, Anchor,
@@ -129,6 +129,11 @@ const App = () => {
         return stored ? parseInt(stored) : 0;
     });
 
+    // Game state
+    const [currentGame, setCurrentGame] = useState(null);
+    const [gameHistory, setGameHistory] = useState([]);
+    const [gameAnswer, setGameAnswer] = useState('');
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -190,10 +195,27 @@ const App = () => {
             }
         }, (err) => console.error("Settings Sync Error:", err));
 
+        // Listen for active game
+        const gameRef = doc(db, sharedNamespace, 'current_game');
+        const unsubGame = onSnapshot(gameRef, (snap) => {
+            if (snap.exists()) {
+                setCurrentGame({ id: snap.id, ...snap.data() });
+            } else {
+                setCurrentGame(null);
+            }
+        }, (err) => console.error("Game Sync Error:", err));
+
+        // Listen for game history
+        const historyRef = collection(db, sharedNamespace, 'game_history');
+        const unsubHistory = onSnapshot(historyRef, (snap) => {
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
+        }, (err) => console.error("Game History Error:", err));
+
         // Initial content load
         refreshVaults();
 
-        return () => { unsubBridge(); unsubJournal(); unsubSettings(); };
+        return () => { unsubBridge(); unsubJournal(); unsubSettings(); unsubGame(); unsubHistory(); };
     }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
@@ -382,6 +404,132 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             alert('Could not generate date ideas. Please try again.');
         }
         setIsGenerating(false);
+    };
+
+    // --- GAME FUNCTIONS ---
+    const getPersonalizedWords = () => {
+        const words = [];
+
+        // Add partner names (minimum 4 letters)
+        if (husbandName && husbandName.length >= 4) words.push(husbandName.toUpperCase());
+        if (wifeName && wifeName.length >= 4) words.push(wifeName.toUpperCase());
+
+        // Extract meaningful words from journal entries
+        journalItems.forEach(item => {
+            if (item.content) {
+                const journalWords = item.content
+                    .split(/\s+/)
+                    .map(w => w.replace(/[^a-zA-Z]/g, '').toUpperCase())
+                    .filter(w => w.length >= 4 && w.length <= 8);
+                words.push(...journalWords);
+            }
+        });
+
+        // Add romantic fallback words
+        const fallbackWords = [
+            'LOVE', 'HEART', 'TRUST', 'UNITY', 'CARE', 'HOPE', 'DREAM', 'BLISS',
+            'ADORE', 'SPARK', 'SWEET', 'CHARM', 'GRACE', 'FAITH', 'LOYAL',
+            'PEACE', 'HAPPY', 'SMILE', 'WARM', 'KIND', 'GENTLE', 'TENDER', 'DEAR'
+        ];
+        words.push(...fallbackWords);
+
+        // Remove duplicates and short words
+        return [...new Set(words)].filter(w => w.length >= 4);
+    };
+
+    const scrambleWord = (word) => {
+        if (word.length < 3) return word;
+        const arr = word.split('');
+        for (let i = arr.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        // Make sure it's actually scrambled
+        return arr.join('') === word ? scrambleWord(word) : arr.join('');
+    };
+
+    const createWordPuzzle = async (wager = '') => {
+        if (!coupleCode || !db || !role) return;
+
+        const personalWords = getPersonalizedWords();
+        const word = personalWords[Math.floor(Math.random() * personalWords.length)];
+        const scrambled = scrambleWord(word);
+        const creatorName = role === 'his' ? husbandName : wifeName;
+
+        // Check if it's a personal word (name or from journal)
+        const isPersonal = word === husbandName?.toUpperCase() || word === wifeName?.toUpperCase() ||
+            journalItems.some(j => j.content?.toUpperCase().includes(word));
+
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            const gameRef = doc(db, sharedNamespace, 'current_game');
+            await setDoc(gameRef, {
+                type: 'word_scramble',
+                word: word,
+                scrambled: scrambled,
+                wager: wager,
+                isPersonal: isPersonal,
+                hint: isPersonal ? '💕 This word is special to us!' : '',
+                createdBy: role,
+                creatorName: creatorName,
+                createdAt: serverTimestamp(),
+                solved: false
+            });
+            setGameAnswer('');
+        } catch (err) {
+            console.error('Create game error:', err);
+            alert('Could not create game. Please try again.');
+        }
+    };
+
+    const submitGameAnswer = async () => {
+        if (!currentGame || !gameAnswer || !coupleCode || !db) return;
+
+        const isCorrect = gameAnswer.toUpperCase().trim() === currentGame.word;
+        const playerName = role === 'his' ? husbandName : wifeName;
+
+        if (isCorrect) {
+            try {
+                const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+
+                // Save to history
+                const historyRef = collection(db, sharedNamespace, 'game_history');
+                await addDoc(historyRef, {
+                    type: currentGame.type,
+                    word: currentGame.word,
+                    wager: currentGame.wager,
+                    createdBy: currentGame.createdBy,
+                    creatorName: currentGame.creatorName,
+                    solvedBy: role,
+                    solverName: playerName,
+                    completedAt: serverTimestamp()
+                });
+
+                // Clear current game
+                const gameRef = doc(db, sharedNamespace, 'current_game');
+                await setDoc(gameRef, { solved: true, solvedBy: role, solverName: playerName }, { merge: true });
+
+                alert(`🎉 Correct! ${currentGame.wager ? `\n\n💝 Wager: ${currentGame.wager}` : ''}`);
+                setGameAnswer('');
+            } catch (err) {
+                console.error('Submit answer error:', err);
+            }
+        } else {
+            alert('❌ Not quite! Try again.');
+        }
+    };
+
+    const clearCurrentGame = async () => {
+        if (!coupleCode || !db) return;
+        if (!window.confirm('Clear this puzzle? Both partners will lose it.')) return;
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            const gameRef = doc(db, sharedNamespace, 'current_game');
+            await setDoc(gameRef, {}, { merge: false });
+            setCurrentGame(null);
+        } catch (err) {
+            console.error('Clear game error:', err);
+        }
     };
 
     const clearBridgeView = () => {
@@ -823,6 +971,113 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         </div>
                     )}
 
+                    {view === 'games' && (
+                        <div className="p-6 space-y-6 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-3 pt-4">
+                                <div className="w-20 h-20 bg-purple-100 rounded-full flex items-center justify-center mx-auto border-4 border-white shadow-xl">
+                                    <Gamepad2 className="w-10 h-10 text-purple-600" />
+                                </div>
+                                <h2 className="text-3xl font-black text-slate-800 tracking-tighter italic">Couple Games</h2>
+                                <p className="text-sm text-slate-400">Play together, wager fun rewards!</p>
+                            </div>
+
+                            {/* Active Game or Create New */}
+                            {currentGame && !currentGame.solved ? (
+                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                    <div className="text-center">
+                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Word Scramble from {currentGame.creatorName}</p>
+                                        {currentGame.hint && (
+                                            <p className="text-xs text-pink-500 mt-1">{currentGame.hint}</p>
+                                        )}
+                                    </div>
+                                    <div className="text-center py-6">
+                                        <p className="text-4xl font-black text-slate-800 tracking-[0.3em]">{currentGame.scrambled}</p>
+                                    </div>
+                                    {currentGame.wager && (
+                                        <div className="p-3 bg-gradient-to-r from-pink-50 to-purple-50 rounded-2xl text-center">
+                                            <p className="text-[10px] font-bold text-purple-600 uppercase">💝 Wager</p>
+                                            <p className="text-sm font-bold text-slate-700 mt-1">{currentGame.wager}</p>
+                                        </div>
+                                    )}
+                                    <input
+                                        type="text"
+                                        value={gameAnswer}
+                                        onChange={(e) => setGameAnswer(e.target.value)}
+                                        placeholder="Your answer..."
+                                        className="w-full p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-lg font-bold uppercase outline-none focus:border-purple-300"
+                                    />
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={submitGameAnswer}
+                                            disabled={!gameAnswer}
+                                            className="flex-1 py-4 text-sm font-black text-white bg-purple-600 rounded-2xl disabled:opacity-50"
+                                        >
+                                            Submit Answer
+                                        </button>
+                                        <button
+                                            onClick={clearCurrentGame}
+                                            className="py-4 px-4 text-sm font-bold text-slate-400 bg-slate-100 rounded-2xl"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                    <h3 className="text-center text-sm font-black text-purple-600 uppercase">Create a Puzzle for Your Partner</h3>
+                                    <input
+                                        type="text"
+                                        placeholder="Optional wager... (e.g., 'Loser gives a massage')"
+                                        className="w-full p-4 bg-purple-50 border border-purple-100 rounded-2xl text-sm outline-none focus:border-purple-300"
+                                        id="wager-input"
+                                    />
+                                    <button
+                                        onClick={() => {
+                                            const wager = document.getElementById('wager-input')?.value || '';
+                                            createWordPuzzle(wager);
+                                        }}
+                                        className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-lg"
+                                    >
+                                        🎲 Generate Word Puzzle
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Game History & Scoreboard */}
+                            {gameHistory.length > 0 && (
+                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
+                                    <div className="flex items-center gap-2 justify-center">
+                                        <Trophy className="w-5 h-5 text-yellow-500" />
+                                        <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="text-center p-4 bg-blue-50 rounded-2xl">
+                                            <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
+                                            <p className="text-3xl font-black text-blue-600">
+                                                {gameHistory.filter(g => g.solvedBy === 'his').length}
+                                            </p>
+                                        </div>
+                                        <div className="text-center p-4 bg-rose-50 rounded-2xl">
+                                            <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
+                                            <p className="text-3xl font-black text-rose-600">
+                                                {gameHistory.filter(g => g.solvedBy === 'hers').length}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Recent Games</p>
+                                        {gameHistory.slice(0, 5).map((game, i) => (
+                                            <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                                                <span className="text-xs font-bold text-slate-600">{game.word}</span>
+                                                <span className="text-[10px] font-bold text-purple-600">Won by {game.solverName}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {view === 'nudge' && (
                         <div className="p-8 space-y-8 animate-in slide-in-from-bottom-4">
                             <div className="text-center space-y-4 pt-4">
@@ -872,18 +1127,21 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
             {/* Navigation (Fixed) */}
             {view !== 'home' && (
-                <nav className="shrink-0 h-20 w-full bg-slate-900 flex items-center justify-around px-8 border-t border-white/5 z-50">
-                    <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <User className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Hub</span>
+                <nav className="shrink-0 h-20 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+                    <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-1 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <User className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Hub</span>
                     </button>
-                    <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <ShieldCheckComp className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Bridge</span>
+                    <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Bridge</span>
                     </button>
-                    <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <Calendar className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Date</span>
+                    <button onClick={() => setView('games')} className={`flex flex-col items-center gap-1 transition-all ${view === 'games' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Games</span>
                     </button>
-                    <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1.5 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <Bell className="w-7 h-7" /><span className="text-[9px] font-black uppercase tracking-[0.2em]">Nudge</span>
+                    <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <Calendar className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Date</span>
+                    </button>
+                    <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <Bell className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Nudge</span>
                     </button>
                 </nav>
             )}
