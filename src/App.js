@@ -155,6 +155,7 @@ const App = () => {
     const [weeklySummary, setWeeklySummary] = useState(null);
     const [conflictMode, setConflictMode] = useState(false);
     const [conflictStep, setConflictStep] = useState(0);
+    const [analysisTimeFilter, setAnalysisTimeFilter] = useState('7days'); // 7days, 14days, workweek, weekend, all
 
     // Initialize PWA and Viewport
     useEffect(() => {
@@ -320,15 +321,74 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["message1", "message2", 
         if (bridgeItems.length === 0) return;
         setIsGenerating(true);
 
-        const recentMessages = bridgeItems.slice(0, 20).map(i => {
+        // Filter messages based on time period
+        const now = new Date();
+        const filterMessages = (items) => {
+            if (analysisTimeFilter === 'all') return items;
+
+            return items.filter(item => {
+                const itemDate = item.createdAt?.toDate ? item.createdAt.toDate() : new Date(item.createdAt);
+                const daysDiff = Math.floor((now - itemDate) / (1000 * 60 * 60 * 24));
+                const dayOfWeek = itemDate.getDay(); // 0=Sunday, 6=Saturday
+
+                switch (analysisTimeFilter) {
+                    case '7days':
+                        return daysDiff <= 7;
+                    case '14days':
+                        return daysDiff <= 14;
+                    case 'workweek':
+                        // Last Monday to Friday
+                        const lastMonday = new Date(now);
+                        lastMonday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+                        lastMonday.setHours(0, 0, 0, 0);
+                        const lastFriday = new Date(lastMonday);
+                        lastFriday.setDate(lastMonday.getDate() + 4);
+                        lastFriday.setHours(23, 59, 59, 999);
+                        return itemDate >= lastMonday && itemDate <= lastFriday;
+                    case 'weekend':
+                        // Last Saturday and Sunday
+                        const lastSaturday = new Date(now);
+                        lastSaturday.setDate(now.getDate() - ((now.getDay() + 1) % 7));
+                        lastSaturday.setHours(0, 0, 0, 0);
+                        const lastSunday = new Date(lastSaturday);
+                        lastSunday.setDate(lastSaturday.getDate() + 1);
+                        lastSunday.setHours(23, 59, 59, 999);
+                        return (dayOfWeek === 0 || dayOfWeek === 6) && daysDiff <= 7;
+                    default:
+                        return true;
+                }
+            });
+        };
+
+        const timeFilterLabels = {
+            '7days': 'Last 7 Days',
+            '14days': 'Last 14 Days',
+            'workweek': 'Last Work Week (Mon-Fri)',
+            'weekend': 'Last Weekend',
+            'all': 'All Time'
+        };
+
+        const filteredItems = filterMessages(bridgeItems);
+
+        if (filteredItems.length === 0) {
+            alert(`No messages found for "${timeFilterLabels[analysisTimeFilter]}". Try a different time period.`);
+            setIsGenerating(false);
+            return;
+        }
+
+        const recentMessages = filteredItems.slice(0, 30).map(i => {
             const author = i.author === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife');
-            return `${author}: "${i.content}"`;
+            const date = i.createdAt?.toDate ? i.createdAt.toDate().toLocaleDateString() : '';
+            return `[${date}] ${author}: "${i.content}"`;
         }).join('\n');
 
-        const systemPrompt = `You are a licensed marriage counselor analyzing a couple's recent communication log. 
+        const systemPrompt = `You are a licensed marriage counselor analyzing a couple's communication over the ${timeFilterLabels[analysisTimeFilter].toLowerCase()}. 
         
 Couple: ${husbandName || 'Husband'} and ${wifeName || 'Wife'}
-Their recent shared messages:
+Time Period: ${timeFilterLabels[analysisTimeFilter]}
+Messages Analyzed: ${filteredItems.length}
+
+Their shared messages:
 ${recentMessages}
 
 Provide a comprehensive relationship analysis in this exact JSON format:
@@ -1246,13 +1306,37 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     </button>
                                 </div>
 
+                                {/* Time Filter Buttons */}
+                                <div className="flex flex-wrap gap-1.5">
+                                    {[
+                                        { id: '7days', label: '7 Days' },
+                                        { id: '14days', label: '14 Days' },
+                                        { id: 'workweek', label: 'Work Week' },
+                                        { id: 'weekend', label: 'Weekend' },
+                                        { id: 'all', label: 'All Time' }
+                                    ].map(filter => (
+                                        <button
+                                            key={filter.id}
+                                            onClick={() => setAnalysisTimeFilter(filter.id)}
+                                            className={`px-2.5 py-1 rounded-lg text-[8px] font-bold uppercase transition-all ${analysisTimeFilter === filter.id
+                                                ? 'bg-rose-600 text-white'
+                                                : darkMode
+                                                    ? 'bg-slate-700 text-slate-400 hover:bg-slate-600'
+                                                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                                                }`}
+                                        >
+                                            {filter.label}
+                                        </button>
+                                    ))}
+                                </div>
+
                                 {pulse && (
                                     <div className="space-y-3">
                                         {/* Health Score */}
                                         <div className="flex items-center gap-3">
                                             <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-xl font-black ${(pulse.healthScore >= 7) ? 'bg-green-100 text-green-600' :
-                                                    (pulse.healthScore >= 4) ? 'bg-yellow-100 text-yellow-600' :
-                                                        'bg-red-100 text-red-600'
+                                                (pulse.healthScore >= 4) ? 'bg-yellow-100 text-yellow-600' :
+                                                    'bg-red-100 text-red-600'
                                                 }`}>
                                                 {pulse.healthScore}/10
                                             </div>
