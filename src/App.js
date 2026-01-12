@@ -715,7 +715,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
         try {
             const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-            await addDoc(gamesRef, {
+            const docRef = await addDoc(gamesRef, {
                 type: 'word_scramble',
                 word: word,
                 scrambled: scrambled,
@@ -728,6 +728,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 solved: false
             });
             setGameAnswer('');
+            setCurrentGameId(docRef.id);
         } catch (err) {
             console.error('Create game error:', err);
             alert('Could not create game. Please try again.');
@@ -818,7 +819,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
         try {
             const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-            await addDoc(gamesRef, {
+            const docRef = await addDoc(gamesRef, {
                 type: 'letter_link',
                 wager: wager,
                 createdBy: role,
@@ -834,6 +835,8 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 history: [] // Log of moves: { word: "HELLO", points: 14, player: 'his' }
             });
             alert('New game started! Good luck.');
+            // Auto-open
+            setCurrentGameId(docRef.id);
         } catch (err) {
             console.error('Create Letter Link error:', err);
             alert('Failed to start game.');
