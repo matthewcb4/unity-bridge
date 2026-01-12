@@ -14,7 +14,7 @@ import {
 } from 'firebase/auth';
 import {
     getFirestore, doc, setDoc, getDoc, collection,
-    onSnapshot, addDoc, serverTimestamp, query
+    onSnapshot, addDoc, serverTimestamp, query, deleteDoc
 } from 'firebase/firestore';
 
 // --- CONFIGURATION ---
@@ -134,6 +134,24 @@ const App = () => {
     const [gameHistory, setGameHistory] = useState([]);
     const [gameAnswer, setGameAnswer] = useState('');
     const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
+
+    // NEW: Dark Mode
+    const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
+
+    // NEW: Anniversary & Milestones
+    const [anniversaryDate, setAnniversaryDate] = useState(localStorage.getItem('anniversary_date') || '');
+    const [milestones, setMilestones] = useState([]);
+
+    // NEW: Journal Edit & Search
+    const [editingJournalId, setEditingJournalId] = useState(null);
+    const [editingJournalContent, setEditingJournalContent] = useState('');
+    const [journalSearchText, setJournalSearchText] = useState('');
+    const [journalFilterType, setJournalFilterType] = useState('all');
+
+    // NEW: Weekly Summary & Conflict Resolution
+    const [weeklySummary, setWeeklySummary] = useState(null);
+    const [conflictMode, setConflictMode] = useState(false);
+    const [conflictStep, setConflictStep] = useState(0);
 
     // Initialize PWA and Viewport
     useEffect(() => {
@@ -365,6 +383,18 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["idea1", "idea2", "idea3
         }
     };
 
+    const deleteFromJournal = async (itemId) => {
+        if (!user || !coupleCode || !role) return;
+        if (!window.confirm('Are you sure you want to delete this journal entry?')) return;
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            await deleteDoc(doc(db, sharedNamespace, 'journals', role, 'entries', itemId));
+        } catch (err) {
+            console.error('Journal delete error:', err);
+            alert('Failed to delete. Please try again.');
+        }
+    };
+
     const generateJournalInsights = async () => {
         if (journalItems.length === 0) {
             alert('Add some journal entries first to get insights');
@@ -382,6 +412,119 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["idea1", "idea2", "idea3
         }
         setIsGenerating(false);
     };
+
+    // NEW: Delete Bridge Items
+    const deleteFromBridge = async (itemId) => {
+        if (!user || !coupleCode) return;
+        if (!window.confirm('Delete this message from the bridge?')) return;
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            await deleteDoc(doc(db, sharedNamespace, 'bridge_items', itemId));
+        } catch (err) {
+            console.error('Bridge delete error:', err);
+            alert('Failed to delete. Please try again.');
+        }
+    };
+
+    // NEW: Update Journal Entry
+    const updateJournalEntry = async (itemId, newContent) => {
+        if (!user || !coupleCode || !role || !newContent.trim()) return;
+        try {
+            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
+            await setDoc(doc(db, sharedNamespace, 'journals', role, 'entries', itemId),
+                { content: newContent.trim() }, { merge: true });
+            setEditingJournalId(null);
+            setEditingJournalContent('');
+        } catch (err) {
+            console.error('Journal update error:', err);
+            alert('Failed to update. Please try again.');
+        }
+    };
+
+    // NEW: Weekly Summary
+    const generateWeeklySummary = async () => {
+        const oneWeekAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+        const weekEntries = journalItems.filter(j =>
+            j.timestamp?.seconds && (j.timestamp.seconds * 1000) > oneWeekAgo
+        );
+        if (weekEntries.length === 0) {
+            alert('No journal entries from this week to analyze');
+            return;
+        }
+        setIsGenerating(true);
+        const entries = weekEntries.map(j => `[${j.type || 'entry'}]: ${j.content}`).join('\n');
+        const prompt = `Analyze this week's relationship journal entries:\n${entries}\n\nReturn JSON: { "mood": "one word overall mood", "highlights": ["highlight 1", "highlight 2"], "areas": ["area to focus on"], "encouragement": "one encouraging sentence" }`;
+        const result = await callGemini(prompt);
+        if (result) setWeeklySummary(result);
+        setIsGenerating(false);
+    };
+
+    // NEW: Export Journal Data
+    const exportJournalData = () => {
+        if (journalItems.length === 0) {
+            alert('No journal entries to export');
+            return;
+        }
+        const data = journalItems.map(j => ({
+            date: j.timestamp ? new Date(j.timestamp.seconds * 1000).toISOString() : 'Unknown',
+            type: j.type || 'entry',
+            content: j.content
+        }));
+        const text = data.map(d => `[${d.date}] (${d.type})\n${d.content}\n`).join('\n---\n\n');
+        const blob = new Blob([text], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `unity-bridge-journal-${new Date().toISOString().split('T')[0]}.txt`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // NEW: Save Anniversary
+    const saveAnniversary = async (date) => {
+        setAnniversaryDate(date);
+        localStorage.setItem('anniversary_date', date);
+        if (coupleCode && db) {
+            await setDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings'),
+                { anniversaryDate: date }, { merge: true });
+        }
+    };
+
+    // NEW: Calculate Days Together
+    const getDaysTogether = () => {
+        if (!anniversaryDate) return null;
+        const start = new Date(anniversaryDate);
+        const now = new Date();
+        const diff = Math.floor((now - start) / (1000 * 60 * 60 * 24));
+        return diff >= 0 ? diff : null;
+    };
+
+    // NEW: Check Milestones
+    const checkMilestones = () => {
+        const earned = [];
+        const daysTogether = getDaysTogether();
+
+        if (journalItems.length >= 1) earned.push({ id: 'first_entry', label: 'First Entry', emoji: '📝' });
+        if (journalItems.length >= 10) earned.push({ id: 'ten_entries', label: '10 Entries', emoji: '📚' });
+        if (journalItems.length >= 50) earned.push({ id: 'fifty_entries', label: '50 Entries', emoji: '🏆' });
+        if (journalItems.length >= 100) earned.push({ id: 'century', label: '100 Entries', emoji: '💯' });
+        if (bridgeItems.length >= 10) earned.push({ id: 'connected', label: 'Connected', emoji: '🌉' });
+        if (daysTogether && daysTogether >= 30) earned.push({ id: 'month', label: '1 Month', emoji: '🌙' });
+        if (daysTogether && daysTogether >= 365) earned.push({ id: 'year', label: '1 Year', emoji: '🎉' });
+        if (daysTogether && daysTogether >= 1825) earned.push({ id: 'five_years', label: '5 Years', emoji: '💎' });
+        if (gameHistory.length >= 5) earned.push({ id: 'gamer', label: 'Game Night', emoji: '🎮' });
+
+        return earned;
+    };
+
+    // Conflict Resolution Steps
+    const CONFLICT_STEPS = [
+        { title: 'Pause & Breathe', prompt: 'Take 3 deep breaths together. When ready, continue.', action: 'I\'m ready to listen with an open heart.' },
+        { title: 'Express Feelings', prompt: 'Using "I feel..." statements, share your emotions without blame.', action: 'I hear your feelings and they matter to me.' },
+        { title: 'Seek Understanding', prompt: 'Ask: "Help me understand your perspective better."', action: 'I want to understand where you\'re coming from.' },
+        { title: 'Find Common Ground', prompt: 'What do you both agree on? What\'s the shared goal?', action: 'We both want our relationship to thrive.' },
+        { title: 'Commit to Action', prompt: 'Each share one thing you\'ll do differently.', action: 'I commit to working on this together.' }
+    ];
 
     const generateDateNight = async (budget = 'moderate') => {
         setIsGenerating(true);
@@ -637,6 +780,51 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     />
                     <p className="text-[9px] text-slate-400 text-center px-4">Use the same code on all your devices to sync your data</p>
                 </div>
+                {/* NEW: Anniversary Date */}
+                <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="text-[10px] font-black text-pink-500 uppercase ml-2 tracking-widest flex items-center gap-2">
+                        <Heart className="w-3 h-3" /> Anniversary Date
+                    </label>
+                    <input
+                        type="date"
+                        value={anniversaryDate}
+                        onChange={(e) => saveAnniversary(e.target.value)}
+                        className="w-full bg-pink-50 p-4 rounded-2xl text-sm border border-pink-100 focus:border-pink-300 outline-none text-center"
+                    />
+                    {getDaysTogether() !== null && (
+                        <div className="text-center py-3 bg-gradient-to-r from-pink-100 to-rose-100 rounded-2xl">
+                            <p className="text-3xl font-black text-rose-600">{getDaysTogether().toLocaleString()}</p>
+                            <p className="text-[10px] font-bold text-rose-400 uppercase">Days Together 💕</p>
+                        </div>
+                    )}
+                </div>
+                {/* NEW: Dark Mode Toggle */}
+                <div className="flex items-center justify-between pt-2 border-t border-slate-100 px-2">
+                    <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                        <Moon className="w-3 h-3" /> Dark Mode
+                    </label>
+                    <button
+                        onClick={() => { const newVal = !darkMode; setDarkMode(newVal); localStorage.setItem('dark_mode', newVal.toString()); }}
+                        className={`w-12 h-6 rounded-full transition-all ${darkMode ? 'bg-slate-800' : 'bg-slate-200'} relative`}
+                    >
+                        <div className={`w-5 h-5 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-6' : 'left-0.5'}`} />
+                    </button>
+                </div>
+                {/* NEW: Milestones */}
+                {checkMilestones().length > 0 && (
+                    <div className="pt-2 border-t border-slate-100">
+                        <p className="text-[10px] font-black text-amber-500 uppercase ml-2 tracking-widest mb-2 flex items-center gap-2">
+                            <Trophy className="w-3 h-3" /> Milestones Earned
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                            {checkMilestones().map(m => (
+                                <span key={m.id} className="px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full text-[9px] font-bold text-amber-700">
+                                    {m.emoji} {m.label}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
             <div className="grid grid-cols-1 w-full gap-5">
@@ -660,10 +848,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     );
 
     return (
-        <div className="fixed inset-0 w-full bg-[#FDF8F8] flex flex-col font-sans text-slate-900 overflow-hidden select-none" style={{ height: 'var(--app-height, 100vh)' }}>
-            <header className="shrink-0 h-16 w-full flex items-center justify-between px-6 bg-white border-b border-rose-50 z-50 shadow-sm">
+        <div className={`fixed inset-0 w-full flex flex-col font-sans overflow-hidden select-none ${darkMode ? 'bg-slate-900 text-slate-100' : 'bg-[#FDF8F8] text-slate-900'}`} style={{ height: 'var(--app-height, 100vh)' }}>
+            <header className={`shrink-0 h-16 w-full flex items-center justify-between px-6 z-50 shadow-sm ${darkMode ? 'bg-slate-800 border-b border-slate-700' : 'bg-white border-b border-rose-50'}`}>
                 {view !== 'home' ? (
-                    <button onClick={() => setView('home')} className="p-2 active:bg-slate-50 rounded-xl transition-all"><ChevronRight className="w-6 h-6 rotate-180 text-slate-400" /></button>
+                    <button onClick={() => setView('home')} className={`p-2 rounded-xl transition-all ${darkMode ? 'active:bg-slate-700' : 'active:bg-slate-50'}`}><ChevronRight className={`w-6 h-6 rotate-180 ${darkMode ? 'text-slate-400' : 'text-slate-400'}`} /></button>
                 ) : <div className="w-10" />}
                 <h1 className="text-xl font-black text-rose-600 flex items-center gap-2 tracking-tighter italic select-none"><Heart className="fill-rose-600 w-5 h-5" /> UNITY</h1>
                 <div className="w-10" />
@@ -785,51 +973,154 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                         </div>
                                     )}
                                     <div className="space-y-4 pt-4 border-t border-slate-100">
-                                        <div className="flex justify-between items-center">
+                                        <div className="flex justify-between items-center flex-wrap gap-2">
                                             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Your Entries</h3>
-                                            <button
-                                                onClick={generateJournalInsights}
-                                                disabled={isGenerating || journalItems.length === 0}
-                                                className="text-[9px] font-black text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-purple-100 transition-all disabled:opacity-50"
-                                            >
-                                                <Sparkles className="w-3 h-3" />
-                                                {isGenerating ? 'Analyzing...' : 'Get Insights'}
-                                            </button>
+                                            <div className="flex gap-2 flex-wrap">
+                                                <button
+                                                    onClick={generateWeeklySummary}
+                                                    disabled={isGenerating}
+                                                    className="text-[9px] font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-blue-100 transition-all disabled:opacity-50"
+                                                >
+                                                    <Calendar className="w-3 h-3" />
+                                                    Weekly
+                                                </button>
+                                                <button
+                                                    onClick={generateJournalInsights}
+                                                    disabled={isGenerating || journalItems.length === 0}
+                                                    className="text-[9px] font-black text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-purple-100 transition-all disabled:opacity-50"
+                                                >
+                                                    <Sparkles className="w-3 h-3" />
+                                                    Insights
+                                                </button>
+                                                <button
+                                                    onClick={exportJournalData}
+                                                    disabled={journalItems.length === 0}
+                                                    className="text-[9px] font-black text-green-600 bg-green-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-green-100 transition-all disabled:opacity-50"
+                                                >
+                                                    <Save className="w-3 h-3" />
+                                                    Export
+                                                </button>
+                                            </div>
                                         </div>
-                                        {journalItems.map(item => {
-                                            const typeInfo = item.type ? JOURNAL_TYPES[item.type] : null;
-                                            const TypeIcon = typeInfo?.icon;
-                                            return (
-                                                <div key={item.id} className={`p-5 bg-white border rounded-3xl shadow-sm ${typeInfo ? typeInfo.border : 'border-slate-100'}`}>
-                                                    <div className="flex items-center justify-between mb-2">
-                                                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleDateString() : 'Now'}</span>
-                                                        {typeInfo && (
-                                                            <span className={`flex items-center gap-1 text-[8px] font-black uppercase px-2 py-1 rounded-full ${typeInfo.bg} ${typeInfo.color}`}>
-                                                                <TypeIcon className="w-3 h-3" />
-                                                                {typeInfo.label}
-                                                            </span>
+                                        {/* Weekly Summary Display */}
+                                        {weeklySummary && (
+                                            <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl space-y-2">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-[10px] font-black text-blue-600 uppercase">Weekly Summary</span>
+                                                    <span className="text-xl">{weeklySummary.mood === 'positive' || weeklySummary.mood === 'happy' ? '😊' : weeklySummary.mood === 'stressed' ? '😰' : '💭'}</span>
+                                                </div>
+                                                <p className="text-sm font-bold text-slate-700">Mood: {weeklySummary.mood}</p>
+                                                {weeklySummary.highlights && (
+                                                    <div>
+                                                        <p className="text-[9px] font-bold text-green-600 uppercase">Highlights:</p>
+                                                        <ul className="text-xs text-slate-600 list-disc pl-4">{weeklySummary.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
+                                                    </div>
+                                                )}
+                                                {weeklySummary.encouragement && (
+                                                    <p className="text-xs italic text-purple-600">{weeklySummary.encouragement}</p>
+                                                )}
+                                            </div>
+                                        )}
+                                        {/* Search and Filter */}
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                value={journalSearchText}
+                                                onChange={(e) => setJournalSearchText(e.target.value)}
+                                                placeholder="Search entries..."
+                                                className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-purple-300"
+                                            />
+                                            <select
+                                                value={journalFilterType}
+                                                onChange={(e) => setJournalFilterType(e.target.value)}
+                                                className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none"
+                                            >
+                                                <option value="all">All Types</option>
+                                                <option value="feeling">Feeling</option>
+                                                <option value="ai_log">AI Log</option>
+                                                <option value="win">Win</option>
+                                                <option value="thought">Thought</option>
+                                            </select>
+                                        </div>
+                                        {journalItems
+                                            .filter(item => {
+                                                const matchesSearch = !journalSearchText || item.content?.toLowerCase().includes(journalSearchText.toLowerCase());
+                                                const matchesType = journalFilterType === 'all' || item.type === journalFilterType;
+                                                return matchesSearch && matchesType;
+                                            })
+                                            .map(item => {
+                                                const typeInfo = item.type ? JOURNAL_TYPES[item.type] : null;
+                                                const TypeIcon = typeInfo?.icon;
+                                                return (
+                                                    <div key={item.id} className={`p-5 bg-white border rounded-3xl shadow-sm ${typeInfo ? typeInfo.border : 'border-slate-100'}`}>
+                                                        <div className="flex items-center justify-between mb-2">
+                                                            <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleDateString() : 'Now'}</span>
+                                                            {typeInfo && (
+                                                                <span className={`flex items-center gap-1 text-[8px] font-black uppercase px-2 py-1 rounded-full ${typeInfo.bg} ${typeInfo.color}`}>
+                                                                    <TypeIcon className="w-3 h-3" />
+                                                                    {typeInfo.label}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {/* Edit Mode */}
+                                                        {editingJournalId === item.id ? (
+                                                            <div className="space-y-2">
+                                                                <textarea
+                                                                    value={editingJournalContent}
+                                                                    onChange={(e) => setEditingJournalContent(e.target.value)}
+                                                                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs min-h-[80px] outline-none focus:border-purple-300"
+                                                                />
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => updateJournalEntry(item.id, editingJournalContent)}
+                                                                        className="flex-1 py-2 text-[9px] font-bold text-white bg-green-600 rounded-xl"
+                                                                    >
+                                                                        Save
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => { setEditingJournalId(null); setEditingJournalContent(''); }}
+                                                                        className="flex-1 py-2 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl"
+                                                                    >
+                                                                        Cancel
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                <p className="text-xs text-slate-600 italic leading-relaxed mb-3">"{item.content}"</p>
+                                                                <div className="flex gap-2">
+                                                                    <button
+                                                                        onClick={() => { setEditingJournalId(item.id); setEditingJournalContent(item.content); }}
+                                                                        className="py-2 px-3 text-[9px] font-bold text-blue-500 bg-blue-50 rounded-xl flex items-center justify-center gap-1 hover:bg-blue-100 transition-all"
+                                                                    >
+                                                                        <Edit3 className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => copyToClipboard(item.content, `j-${item.id}`)}
+                                                                        className="flex-1 py-2 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl flex items-center justify-center gap-1 hover:bg-slate-200 transition-all"
+                                                                    >
+                                                                        {copiedId === `j-${item.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                                                        {copiedId === `j-${item.id}` ? 'Copied!' : 'Copy'}
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => saveToBridge(item.content)}
+                                                                        className="flex-1 py-2 text-[9px] font-bold text-white bg-green-600 rounded-xl flex items-center justify-center gap-1 hover:bg-green-700 transition-all"
+                                                                    >
+                                                                        <Share2 className="w-3 h-3" />
+                                                                        Share
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => deleteFromJournal(item.id)}
+                                                                        className="py-2 px-3 text-[9px] font-bold text-red-500 bg-red-50 rounded-xl flex items-center justify-center gap-1 hover:bg-red-100 transition-all"
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
+                                                                </div>
+                                                            </>
                                                         )}
                                                     </div>
-                                                    <p className="text-xs text-slate-600 italic leading-relaxed mb-3">"{item.content}"</p>
-                                                    <div className="flex gap-2">
-                                                        <button
-                                                            onClick={() => copyToClipboard(item.content, `j-${item.id}`)}
-                                                            className="flex-1 py-2 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl flex items-center justify-center gap-1 hover:bg-slate-200 transition-all"
-                                                        >
-                                                            {copiedId === `j-${item.id}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                                                            {copiedId === `j-${item.id}` ? 'Copied!' : 'Copy'}
-                                                        </button>
-                                                        <button
-                                                            onClick={() => saveToBridge(item.content)}
-                                                            className="flex-1 py-2 text-[9px] font-bold text-white bg-green-600 rounded-xl flex items-center justify-center gap-1 hover:bg-green-700 transition-all"
-                                                        >
-                                                            <Share2 className="w-3 h-3" />
-                                                            Share to Bridge
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
+                                                );
+                                            })}
                                     </div>
                                 </div>
                             )}
@@ -871,7 +1162,17 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 ) : (
                                     visibleBridgeItems.map(item => (
                                         <div key={item.id} className={`p-8 rounded-[3rem] border-2 relative ${item.author === role ? 'bg-slate-50 border-slate-100' : 'bg-rose-50/50 border-rose-100'}`}>
-                                            <div className="flex justify-between mb-3"><span className={`text-[10px] font-black uppercase tracking-widest ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span></div>
+                                            <div className="flex justify-between mb-3">
+                                                <span className={`text-[10px] font-black uppercase tracking-widest ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span>
+                                                {item.author === role && (
+                                                    <button
+                                                        onClick={() => deleteFromBridge(item.id)}
+                                                        className="text-[9px] font-bold text-red-400 hover:text-red-600 transition-all"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                )}
+                                            </div>
                                             <p className="text-base text-slate-700 italic font-medium leading-relaxed">"{item.content}"</p>
                                         </div>
                                     ))
@@ -1169,30 +1470,105 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             </div>
                         </div>
                     )}
+
+                    {/* NEW: Conflict Resolution View */}
+                    {view === 'resolve' && (
+                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-2 pt-2">
+                                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                                    <Anchor className="w-7 h-7 text-orange-600" />
+                                </div>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
+                                <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+                            </div>
+
+                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
+                                {/* Progress */}
+                                <div className="flex gap-1">
+                                    {CONFLICT_STEPS.map((_, i) => (
+                                        <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
+                                    ))}
+                                </div>
+
+                                {/* Current Step */}
+                                <div className="text-center py-4">
+                                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
+                                    <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
+                                </div>
+
+                                <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
+                                    <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
+                                </div>
+
+                                <button
+                                    onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
+                                    className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
+                                >
+                                    <Share2 className="w-4 h-4" />
+                                    Share: "{CONFLICT_STEPS[conflictStep].action}"
+                                </button>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
+                                        disabled={conflictStep === 0}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
+                                    >
+                                        ← Previous
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (conflictStep < CONFLICT_STEPS.length - 1) {
+                                                setConflictStep(conflictStep + 1);
+                                            } else {
+                                                alert('🎉 You completed the conflict resolution process! Great job working through this together.');
+                                                setConflictStep(0);
+                                            }
+                                        }}
+                                        className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
+                                    >
+                                        {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => { setConflictStep(0); setView('hub'); }}
+                                className="w-full py-3 text-slate-400 text-xs font-bold"
+                            >
+                                Exit to Hub
+                            </button>
+                        </div>
+                    )}
                 </div>
             </main>
 
             {/* Navigation (Fixed) */}
-            {view !== 'home' && (
-                <nav className="shrink-0 h-20 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                    <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-1 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <User className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Hub</span>
-                    </button>
-                    <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Bridge</span>
-                    </button>
-                    <button onClick={() => setView('games')} className={`flex flex-col items-center gap-1 transition-all ${view === 'games' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Games</span>
-                    </button>
-                    <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <Calendar className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Date</span>
-                    </button>
-                    <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                        <Bell className="w-6 h-6" /><span className="text-[8px] font-black uppercase tracking-wider">Nudge</span>
-                    </button>
-                </nav>
-            )}
-        </div>
+            {
+                view !== 'home' && (
+                    <nav className="shrink-0 h-20 w-full bg-slate-900 flex items-center justify-around px-2 border-t border-white/5 z-50">
+                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-1 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <User className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Hub</span>
+                        </button>
+                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'bridge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <ShieldCheckComp className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Bridge</span>
+                        </button>
+                        <button onClick={() => setView('resolve')} className={`flex flex-col items-center gap-1 transition-all ${view === 'resolve' ? 'text-orange-500 scale-110' : 'text-slate-500'}`}>
+                            <Anchor className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Resolve</span>
+                        </button>
+                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-1 transition-all ${view === 'games' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <Gamepad2 className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Games</span>
+                        </button>
+                        <button onClick={() => setView('date')} className={`flex flex-col items-center gap-1 transition-all ${view === 'date' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <Calendar className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Date</span>
+                        </button>
+                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-1 transition-all ${view === 'nudge' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                            <Bell className="w-5 h-5" /><span className="text-[7px] font-black uppercase tracking-wider">Nudge</span>
+                        </button>
+                    </nav>
+                )
+            }
+        </div >
     );
 };
 
