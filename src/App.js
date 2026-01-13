@@ -1429,6 +1429,64 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 </>
             )}
 
+            {/* Parent PIN Modal - Global (works for both couple and family modes) */}
+            {showParentPinModal && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                        <div className="text-center">
+                            <span className="text-5xl">{pendingParentRole === 'his' ? '👨' : '👩'}</span>
+                            <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                                {pendingParentRole === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife')}
+                            </h3>
+                            <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
+                            <p className="text-[10px] text-slate-400 mt-1">(First time? Use 0000 to set up)</p>
+                        </div>
+
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            value={parentPinInput}
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                setParentPinInput(val);
+                                if (val.length === 4) {
+                                    const storedPin = localStorage.getItem(`${pendingParentRole}_pin`) || '0000';
+                                    if (val === storedPin) {
+                                        setRole(pendingParentRole);
+                                        localStorage.setItem('user_role', pendingParentRole);
+                                        setShowParentPinModal(false);
+                                        setParentPinInput('');
+                                        setPendingParentRole(null);
+                                        if (portalMode === 'family') {
+                                            setView('parent_hub');
+                                        } else {
+                                            setView('hub');
+                                            setAffectionType('primary');
+                                        }
+                                    } else {
+                                        alert('Wrong PIN! Try again.');
+                                        setParentPinInput('');
+                                    }
+                                }
+                            }}
+                            className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                            placeholder="••••"
+                            autoFocus
+                        />
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => { setShowParentPinModal(false); setParentPinInput(''); setPendingParentRole(null); }}
+                                className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* FAMILY PORTAL MODE */}
             {portalMode === 'family' && (
                 <>
@@ -1541,67 +1599,6 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => { setCurrentKid(null); setKidPinInput(''); }}
-                                        className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Parent PIN Modal */}
-                    {showParentPinModal && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                            <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                                <div className="text-center">
-                                    <span className="text-5xl">{pendingParentRole === 'his' ? '👨' : '👩'}</span>
-                                    <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
-                                        {pendingParentRole === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife')}
-                                    </h3>
-                                    <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
-                                    <p className="text-[10px] text-slate-400 mt-1">(First time? Use 0000 to set up)</p>
-                                </div>
-
-                                <input
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={4}
-                                    value={parentPinInput}
-                                    onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                                        setParentPinInput(val);
-                                        // Auto-submit on 4 digits
-                                        if (val.length === 4) {
-                                            // Get stored PIN (default to 0000 for first time)
-                                            const storedPin = localStorage.getItem(`${pendingParentRole}_pin`) || '0000';
-                                            if (val === storedPin) {
-                                                setRole(pendingParentRole);
-                                                localStorage.setItem('user_role', pendingParentRole);
-                                                setShowParentPinModal(false);
-                                                setParentPinInput('');
-                                                setPendingParentRole(null);
-                                                // Navigate based on portal mode
-                                                if (portalMode === 'family') {
-                                                    setView('parent_hub');
-                                                } else {
-                                                    setView('hub');
-                                                    setAffectionType('primary');
-                                                }
-                                            } else {
-                                                alert('Wrong PIN! Try again.');
-                                                setParentPinInput('');
-                                            }
-                                        }
-                                    }}
-                                    className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
-                                    placeholder="••••"
-                                    autoFocus
-                                />
-
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => { setShowParentPinModal(false); setParentPinInput(''); setPendingParentRole(null); }}
                                         className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
                                     >
                                         Cancel
