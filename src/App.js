@@ -183,6 +183,15 @@ const App = () => {
     const [conflictStep, setConflictStep] = useState(0);
     const [analysisTimeFilter, setAnalysisTimeFilter] = useState('7days'); // 7days, 14days, workweek, weekend, all
 
+    // FAMILY BRIDGE: Portal Mode State
+    const [portalMode, setPortalMode] = useState(() => localStorage.getItem('portal_mode') || 'couple'); // 'couple' | 'family' | 'kid'
+    const [kidProfiles, setKidProfiles] = useState([]); // Array of kid profiles
+    const [currentKid, setCurrentKid] = useState(null); // Currently logged in kid
+    const [kidPinInput, setKidPinInput] = useState('');
+    const [showKidManager, setShowKidManager] = useState(false);
+    const [kidJournalItems, setKidJournalItems] = useState([]);
+    const [kidBridgeItems, setKidBridgeItems] = useState([]);
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -1267,131 +1276,283 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 <div className="bg-rose-100 p-4 rounded-full inline-block border-2 border-white shadow-lg">
                     <Heart className="w-8 h-8 text-rose-600 fill-rose-600" />
                 </div>
-                <h1 className="text-2xl font-black text-slate-800 tracking-tighter italic">Unity Bridge</h1>
-                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">Relationship OS</p>
+                <h1 className="text-2xl font-black text-slate-800 tracking-tighter italic">
+                    {portalMode === 'family' ? 'Family Bridge' : 'Unity Bridge'}
+                </h1>
+                <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
+                    {portalMode === 'family' ? 'Family Connection' : 'Relationship OS'}
+                </p>
             </div>
 
-            {/* Settings Card - Compact */}
-            <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                {/* Names Row */}
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black text-blue-500 uppercase ml-1">👤 Husband</label>
-                        <input
-                            value={husbandName}
-                            onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }}
-                            placeholder="Name"
-                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-blue-300'}`}
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black text-rose-500 uppercase ml-1">👤 Wife</label>
-                        <input
-                            value={wifeName}
-                            onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }}
-                            placeholder="Name"
-                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-rose-300'}`}
-                        />
-                    </div>
-                </div>
-
-                {/* Pet Names Row */}
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                        <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
-                        <input
-                            value={husbandPetName}
-                            onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
-                            placeholder="e.g. honey, babe, love (comma separated)"
-                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
-                        />
-                    </div>
-                    <div className="space-y-1">
-                        <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
-                        <input
-                            value={wifePetName}
-                            onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
-                            placeholder="e.g. sweetie, love, darling (comma separated)"
-                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
-                        />
-                    </div>
-                </div>
-
-                {/* Love Languages Row */}
-                <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
-                        <select
-                            value={hisLoveLanguage}
-                            onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
-                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
-                        >
-                            <option>Physical Touch</option>
-                            <option>Words of Affirmation</option>
-                            <option>Quality Time</option>
-                            <option>Acts of Service</option>
-                            <option>Receiving Gifts</option>
-                        </select>
-                    </div>
-                    <div className="space-y-1">
-                        <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
-                        <select
-                            value={herLoveLanguage}
-                            onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
-                            className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
-                        >
-                            <option>Words of Affirmation</option>
-                            <option>Physical Touch</option>
-                            <option>Quality Time</option>
-                            <option>Acts of Service</option>
-                            <option>Receiving Gifts</option>
-                        </select>
-                    </div>
-                </div>
-
-                {/* Couple Code */}
-                <div className="space-y-1.5">
-                    <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
-                        <Lock className="w-3 h-3" /> Couple Code
-                    </label>
-                    <input
-                        value={coupleCode}
-                        onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
-                        placeholder="e.g. smith2024"
-                        className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
-                    />
-                    <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Same code on all devices to sync</p>
-                </div>
-            </div>
-
-            {/* Hub Buttons - Compact */}
-            <div className="grid grid-cols-2 w-full gap-3">
+            {/* Portal Selector */}
+            <div className={`w-full flex p-1 rounded-2xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
                 <button
-                    onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); setAffectionType('primary'); } }}
-                    className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
+                    onClick={() => { setPortalMode('couple'); localStorage.setItem('portal_mode', 'couple'); }}
+                    className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1
+                        ${portalMode === 'couple' ? 'bg-rose-600 text-white shadow-md' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
                 >
-                    <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                        <User className="w-6 h-6" />
-                    </div>
-                    <div className="text-center">
-                        <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Husband</h3>
-                        <p className="text-[8px] text-blue-500 font-bold uppercase">Enter Hub</p>
-                    </div>
+                    💑 Couple
                 </button>
                 <button
-                    onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); setAffectionType('primary'); } }}
-                    className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
+                    onClick={() => { setPortalMode('family'); localStorage.setItem('portal_mode', 'family'); }}
+                    className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1
+                        ${portalMode === 'family' ? 'bg-purple-600 text-white shadow-md' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
                 >
-                    <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
-                        <User className="w-6 h-6" />
-                    </div>
-                    <div className="text-center">
-                        <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Wife</h3>
-                        <p className="text-[8px] text-rose-500 font-bold uppercase">Enter Hub</p>
-                    </div>
+                    👨‍👩‍👧‍👦 Family
                 </button>
             </div>
-            {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter couple code to unlock</p>}
+
+            {/* COUPLE PORTAL MODE */}
+            {portalMode === 'couple' && (
+                <>
+                    {/* Settings Card - Compact */}
+                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                        {/* Names Row */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-500 uppercase ml-1">👤 Husband</label>
+                                <input
+                                    value={husbandName}
+                                    onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }}
+                                    placeholder="Name"
+                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-blue-300'}`}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-rose-500 uppercase ml-1">👤 Wife</label>
+                                <input
+                                    value={wifeName}
+                                    onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }}
+                                    placeholder="Name"
+                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-rose-300'}`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Pet Names Row */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
+                                <input
+                                    value={husbandPetName}
+                                    onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
+                                    placeholder="e.g. honey, babe, love (comma separated)"
+                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
+                                <input
+                                    value={wifePetName}
+                                    onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
+                                    placeholder="e.g. sweetie, love, darling (comma separated)"
+                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Love Languages Row */}
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
+                                <select
+                                    value={hisLoveLanguage}
+                                    onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
+                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
+                                >
+                                    <option>Physical Touch</option>
+                                    <option>Words of Affirmation</option>
+                                    <option>Quality Time</option>
+                                    <option>Acts of Service</option>
+                                    <option>Receiving Gifts</option>
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
+                                <select
+                                    value={herLoveLanguage}
+                                    onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
+                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
+                                >
+                                    <option>Words of Affirmation</option>
+                                    <option>Physical Touch</option>
+                                    <option>Quality Time</option>
+                                    <option>Acts of Service</option>
+                                    <option>Receiving Gifts</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Couple Code */}
+                        <div className="space-y-1.5">
+                            <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
+                                <Lock className="w-3 h-3" /> Couple Code
+                            </label>
+                            <input
+                                value={coupleCode}
+                                onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
+                                placeholder="e.g. smith2024"
+                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
+                            />
+                            <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Same code on all devices to sync</p>
+                        </div>
+                    </div>
+
+                    {/* Hub Buttons - Compact */}
+                    <div className="grid grid-cols-2 w-full gap-3">
+                        <button
+                            onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); setAffectionType('primary'); } }}
+                            className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
+                        >
+                            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
+                                <User className="w-6 h-6" />
+                            </div>
+                            <div className="text-center">
+                                <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Husband</h3>
+                                <p className="text-[8px] text-blue-500 font-bold uppercase">Enter Hub</p>
+                            </div>
+                        </button>
+                        <button
+                            onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); setAffectionType('primary'); } }}
+                            className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
+                        >
+                            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
+                                <User className="w-6 h-6" />
+                            </div>
+                            <div className="text-center">
+                                <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Wife</h3>
+                                <p className="text-[8px] text-rose-500 font-bold uppercase">Enter Hub</p>
+                            </div>
+                        </button>
+                    </div>
+                    {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter couple code to unlock</p>}
+                </>
+            )}
+
+            {/* FAMILY PORTAL MODE */}
+            {portalMode === 'family' && (
+                <>
+                    {/* Family Code */}
+                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                        <div className="space-y-1.5">
+                            <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
+                                <Lock className="w-3 h-3" /> Family Code
+                            </label>
+                            <input
+                                value={coupleCode}
+                                onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
+                                placeholder="e.g. smith"
+                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
+                            />
+                            <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Your family's shared code</p>
+                        </div>
+                    </div>
+
+                    {/* Who's Using the App? */}
+                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                        <p className={`text-xs font-black text-center ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Who's using the app?</p>
+
+                        {/* Parent Buttons */}
+                        <div className="grid grid-cols-2 gap-2">
+                            <button
+                                onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); } }}
+                                disabled={!coupleCode}
+                                className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
+                            >
+                                <span className="text-2xl">👨</span>
+                                <span className="text-[10px] font-bold text-blue-600">{husbandName || 'Dad'}</span>
+                            </button>
+                            <button
+                                onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); } }}
+                                disabled={!coupleCode}
+                                className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
+                            >
+                                <span className="text-2xl">👩</span>
+                                <span className="text-[10px] font-bold text-rose-600">{wifeName || 'Mom'}</span>
+                            </button>
+                        </div>
+
+                        {/* Divider */}
+                        <div className="flex items-center gap-2">
+                            <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
+                            <span className="text-[9px] text-slate-400 font-bold">KIDS</span>
+                            <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
+                        </div>
+
+                        {/* Kid Profiles */}
+                        {kidProfiles.length > 0 ? (
+                            <div className="grid grid-cols-3 gap-2">
+                                {kidProfiles.map((kid, i) => (
+                                    <button
+                                        key={kid.id || i}
+                                        onClick={() => { setCurrentKid(kid); setKidPinInput(''); }}
+                                        disabled={!coupleCode}
+                                        className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}
+                                    >
+                                        <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                        <span className="text-[10px] font-bold text-purple-600">{kid.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-4">
+                                <p className="text-[10px] text-slate-400 mb-2">No kid profiles yet</p>
+                                <p className="text-[9px] text-slate-400">Parents: Enter as Mom or Dad to add kids</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Kid PIN Modal */}
+                    {currentKid && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                <div className="text-center">
+                                    <span className="text-5xl">{currentKid.avatar || '🧒'}</span>
+                                    <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Hi, {currentKid.name}!</h3>
+                                    <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
+                                </div>
+
+                                <input
+                                    type="password"
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    value={kidPinInput}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                        setKidPinInput(val);
+                                        // Auto-submit on 4 digits
+                                        if (val.length === 4) {
+                                            if (val === currentKid.pin) {
+                                                setPortalMode('kid');
+                                                localStorage.setItem('portal_mode', 'kid');
+                                                localStorage.setItem('current_kid_id', currentKid.id);
+                                                setView('kid_hub');
+                                            } else {
+                                                alert('Wrong PIN! Try again.');
+                                                setKidPinInput('');
+                                            }
+                                        }
+                                    }}
+                                    className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                                    placeholder="••••"
+                                    autoFocus
+                                />
+
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => { setCurrentKid(null); setKidPinInput(''); }}
+                                        className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter family code to unlock</p>}
+                </>
+            )}
         </div>
     );
 
