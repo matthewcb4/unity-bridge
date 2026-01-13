@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Heart, Flame, Sparkles, MessageCircle, Copy, Check, Share2,
     RefreshCcw, Settings, BookOpen, ChevronRight, User, Gamepad2, Trophy,
@@ -16,6 +16,7 @@ import {
     getFirestore, doc, setDoc, getDoc, collection, updateDoc,
     onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
+import { calculateMoveScore, getBonusType, LETTER_POINTS } from './letterLinkLogic';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
@@ -144,6 +145,7 @@ const App = () => {
     const [selectedTileIndex, setSelectedTileIndex] = useState(null); // Index in hand
     const [placedTiles, setPlacedTiles] = useState([]); // [{ char, row, col, fromHandIndex }]
     const [gameDebts, setGameDebts] = useState(() => JSON.parse(localStorage.getItem('game_debts') || '[]'));
+    const prevGamesRef = useRef({});
     const [scoreboardFilter, setScoreboardFilter] = useState('all'); // all, 7days, 30days
     const [gameTurn, setGameTurn] = useState(null); // 'his' or 'hers' - whose turn to guess
     const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
@@ -246,6 +248,23 @@ const App = () => {
         const activeGamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
         const unsubGames = onSnapshot(activeGamesRef, (snap) => {
             const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Notification Logic: Check for turn changes
+            games.forEach(g => {
+                const prevTurn = prevGamesRef.current[g.id];
+                const currentTurn = g.currentTurn || (g.createdBy === 'his' ? 'hers' : 'his');
+
+                // If it wasn't my turn, and now it IS my turn, and I haven't been notified yet for this state
+                if (prevTurn && prevTurn !== role && currentTurn === role) {
+                    sendNotification(
+                        "It's your turn!",
+                        `Time to move in ${g.type === 'letter_link' ? 'Letter Link' : 'Word Scramble'}!`,
+                        'games'
+                    );
+                }
+                prevGamesRef.current[g.id] = currentTurn;
+            });
+
             // Sort by creation date desc
             setActiveGames(games.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
         }, (err) => console.error("Games Sync Error:", err));
@@ -751,6 +770,9 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     };
 
     const handleBoardClick = (index) => {
+        const activeGame = activeGames.find(g => g.id === currentGameId);
+        if (!activeGame) return;
+
         const row = Math.floor(index / 11);
         const col = index % 11;
 
@@ -789,10 +811,229 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     };
 
     const submitLetterLinkMove = async () => {
-        // Placeholder for move validation
         if (placedTiles.length === 0) return;
-        alert(`Submitting move with ${placedTiles.length} tiles! (Validation coming soon)`);
-        // TODO: Validate words, calculate score, update board & hand in Firestore
+
+        // 1. Get Game
+        const activeGame = activeGames.find(g => g.id === currentGameId);
+        if (!activeGame) return;
+
+        let board = [];
+        try { board = JSON.parse(activeGame.board || '[]'); } catch (e) { }
+        if (board.length === 0) board = Array(121).fill(null);
+
+        // 2. Validate Turn (already checked in UI, but good for safety)
+        const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
+        if (currentTurn !== role) {
+            alert("It's not your turn!");
+            return;
+        }
+
+        // 3. Validate Placement (Simplified Connectivity)
+        // Rule: If board is empty, must touch center (60).
+        // Rule: If board has tiles, at least one placed tile must be adjacent to an existing tile.
+        // Rule: All placed tiles must be in a single row or column.
+
+        // A. Alignment Check
+        const rows = new Set(placedTiles.map(t => t.row));
+        const cols = new Set(placedTiles.map(t => t.col));
+        if (rows.size > 1 && cols.size > 1) {
+            alert("Tiles must be placed in a straight line!");
+            return;
+        }
+
+        // B. Connectivity Check
+        const boardHasTiles = board.some(cell => cell !== null);
+        let isConnected = false;
+
+        if (!boardHasTiles) {
+            // First move: must touch center (index 60)
+            isConnected = placedTiles.some(t => (t.row * 11 + t.col) === 60);
+            if (!isConnected) {
+                alert("First move must assume the center star (★)!");
+                return;
+            }
+        } else {
+            // Subsequent moves: must touch existing tile
+            // Check neighbors of all placed tiles
+            const neighbors = [
+                { r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 }
+            ];
+
+            isConnected = placedTiles.some(t => {
+                return neighbors.some(n => {
+                    const nr = t.row + n.r;
+                    const nc = t.col + n.c;
+                    if (nr < 0 || nr > 10 || nc < 0 || nc > 10) return false;
+                    const idx = nr * 11 + nc;
+                    return board[idx] !== null; // Touching an occupied cell
+                });
+            });
+
+            if (!isConnected) {
+                // Or, if not directly touching, is it filling a gap between two existing tiles?
+                // That case is implicitly handled if the *word* is connected, but technically 
+                // you could place a tile in a gap. 
+                // For V1, strict adjacency is safer.
+                alert("Tiles must connect to existing words!");
+                return;
+            }
+        }
+
+        // 4. Calculate Score
+        const moveScore = calculateMoveScore(placedTiles, board);
+
+        // 5. Update Board & Hand
+        const newBoard = [...board];
+        placedTiles.forEach(t => {
+            newBoard[t.row * 11 + t.col] = { char: t.char, owner: role };
+        });
+
+        const myHand = [...activeGame.players[role].hand];
+        // Remove used tiles (matched by index to avoid duplicates)
+        // placedTiles has 'fromHandIndex'. Sort desc to splice correctly
+        placedTiles.sort((a, b) => b.fromHandIndex - a.fromHandIndex).forEach(t => {
+            myHand.splice(t.fromHandIndex, 1);
+        });
+
+        // Refill Hand from Bag
+        let bag = [...activeGame.bag];
+        while (myHand.length < 7 && bag.length > 0) {
+            myHand.push(bag.pop());
+        }
+
+        // 6. Push Update
+        try {
+            const nextTurn = role === 'his' ? 'hers' : 'his';
+            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', currentGameId), {
+                board: JSON.stringify(newBoard),
+                bag: bag,
+                [`players.${role}.hand`]: myHand,
+                [`players.${role}.score`]: (activeGame.players[role].score || 0) + moveScore,
+                currentTurn: nextTurn,
+                // Add to history log
+                history: [...(activeGame.history || []), {
+                    word: "MOVE", // TODO: Detect actual word string
+                    points: moveScore,
+                    player: role,
+                    timestamp: new Date().toISOString()
+                }]
+            });
+
+            setPlacedTiles([]);
+            setSelectedTileIndex(null);
+
+            // Queue Notification
+            try {
+                // Determine partner's user ID if possible, or just send generic. 
+                // Since sendNotification uses 'notifyPrefs', we just need to ensure the partner is subscribed.
+                // We'll rely on the simple 'game_move' type we added earlier (or 'games').
+                // Actually, let's just use the existing sendNotification. 
+                // Wait, sendNotification sends to THIS device? No, it's local.
+                // We need a Cloud Function for remote push. 
+                // For V1 (local PWA with shared login? No, likely separate devices).
+                // Existing solution uses `notifyPrefs` local check. 
+                // Real push requires FCM token exchange. 
+                // Assuming "cue the notification" means using the Service Worker we just built?
+                // The prompt says "que the notification". 
+                // If the user means local notification on the *other* device, that requires Firestore listener -> Service Worker trigger.
+                // My Sw implementation responds to "push" events.
+                // Firestore listeners in `App.js` can trigger `sendNotification` locally when data changes!
+                // So if I update `currentTurn`, the OTHER client's onSnapshot will fire.
+                // I need to make sure the OnSnapshot handler in App.js triggers a notification when turn changes to ME.
+            } catch (ignored) { }
+
+        } catch (err) {
+            console.error("Move Error:", err);
+            alert("Failed to submit move. Try again.");
+        }
+    };
+
+    // Shuffle hand tiles (local reorder in Firestore)
+    const shuffleHand = async (gameId) => {
+        const game = activeGames.find(g => g.id === gameId);
+        if (!game || !coupleCode || !db) return;
+
+        const myHand = [...(game.players?.[role]?.hand || [])];
+        // Fisher-Yates shuffle
+        for (let i = myHand.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [myHand[i], myHand[j]] = [myHand[j], myHand[i]];
+        }
+
+        try {
+            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
+                [`players.${role}.hand`]: myHand
+            });
+        } catch (err) {
+            console.error('Shuffle error:', err);
+        }
+    };
+
+    // Pass turn without placing tiles
+    const passLetterLinkTurn = async (gameId) => {
+        const game = activeGames.find(g => g.id === gameId);
+        if (!game || !coupleCode || !db) return;
+
+        if (!window.confirm('Pass your turn without playing? (The other player will go next)')) return;
+
+        try {
+            const nextTurn = role === 'his' ? 'hers' : 'his';
+            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
+                currentTurn: nextTurn,
+                history: [...(game.history || []), {
+                    word: 'PASS',
+                    points: 0,
+                    player: role,
+                    timestamp: new Date().toISOString()
+                }]
+            });
+            setPlacedTiles([]);
+            setSelectedTileIndex(null);
+        } catch (err) {
+            console.error('Pass turn error:', err);
+            alert('Failed to pass turn.');
+        }
+    };
+
+    // End Letter Link game
+    const endLetterLinkGame = async (gameId) => {
+        const game = activeGames.find(g => g.id === gameId);
+        if (!game || !coupleCode || !db) return;
+
+        if (!window.confirm('End the game now? Final scores will be tallied.')) return;
+
+        try {
+            // Calculate final scores (subtract remaining tile points)
+            const hisHandPoints = (game.players?.his?.hand || []).reduce((sum, char) => sum + (LETTER_POINTS[char] || 0), 0);
+            const hersHandPoints = (game.players?.hers?.hand || []).reduce((sum, char) => sum + (LETTER_POINTS[char] || 0), 0);
+            const hisFinal = (game.players?.his?.score || 0) - hisHandPoints;
+            const hersFinal = (game.players?.hers?.score || 0) - hersHandPoints;
+            const winner = hisFinal > hersFinal ? 'his' : (hersFinal > hisFinal ? 'hers' : 'tie');
+
+            // Save to history
+            await addDoc(collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items'), {
+                type: 'letter_link',
+                winner: winner,
+                wager: game.wager || '',
+                hisScore: hisFinal,
+                hersScore: hersFinal,
+                completedAt: serverTimestamp()
+            });
+
+            // Delete active game
+            await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
+
+            setCurrentGameId(null);
+            setPlacedTiles([]);
+            setSelectedTileIndex(null);
+
+            const winnerName = winner === 'tie' ? 'It\'s a tie!' :
+                (winner === 'his' ? `${husbandName || 'Husband'} wins!` : `${wifeName || 'Wife'} wins!`);
+            alert(`Game Over! ${winnerName}\n\nFinal Scores:\n${husbandName || 'Him'}: ${hisFinal}\n${wifeName || 'Her'}: ${hersFinal}`);
+        } catch (err) {
+            console.error('End game error:', err);
+            alert('Failed to end game.');
+        }
     };
 
     const submitGameAnswer = async (gameId, answer) => {
@@ -2099,32 +2340,161 @@ Generated by Unity Bridge - Relationship OS`;
 
                                                 const myHand = activeGame.players?.[role]?.hand || [];
 
-                                                return (
-                                                    <div className="flex flex-col items-center gap-4 py-2">
-                                                        {/* 11x11 BOARD */}
-                                                        {/* Mobile-friendly: use smaller cells or horizontal scroll if needed. 11 cols * ~1.5rem = ~16.5rem ~ 260px. Should fit. */}
-                                                        <div className="grid grid-cols-11 gap-[2px] bg-indigo-900 p-1 rounded-lg border-2 border-indigo-950 shadow-inner">
-                                                            {board.map((cell, i) => {
-                                                                const isCenter = i === 60;
-                                                                return (
-                                                                    <div key={i} className={`w-6 h-6 flex items-center justify-center text-[10px] font-bold rounded-[2px] ${cell ? 'bg-amber-100 text-amber-900 shadow-sm border border-amber-200' : (isCenter ? 'bg-indigo-800 text-indigo-400' : 'bg-indigo-50/10')}`}>
-                                                                        {cell ? cell.char : (isCenter ? '★' : '')}
-                                                                    </div>
-                                                                );
-                                                            })}
-                                                        </div>
+                                                return (() => {
+                                                    // Prepare display board (permanent + temporary)
+                                                    const displayBoard = [...board];
+                                                    placedTiles.forEach(t => {
+                                                        displayBoard[t.row * 11 + t.col] = { char: t.char, temporary: true };
+                                                    });
 
-                                                        {/* RACK / HAND */}
-                                                        <div className="w-full bg-amber-800 p-3 rounded-xl shadow-lg flex justify-center gap-2">
-                                                            {myHand.map((tile, i) => (
-                                                                <div key={i} className="w-8 h-8 bg-amber-100 border-b-4 border-amber-300 rounded flex items-center justify-center font-black text-amber-900 text-lg shadow">
-                                                                    {tile}
+                                                    // Prepare hand visualization
+                                                    const handDisplay = myHand.map((char, originalIndex) => {
+                                                        const isSelected = selectedTileIndex === originalIndex;
+                                                        const isPlaced = placedTiles.some(t => t.fromHandIndex === originalIndex);
+                                                        return { char, originalIndex, isSelected, isPlaced };
+                                                    });
+
+                                                    // Check turn
+                                                    const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
+                                                    const isMyTurn = currentTurn === role;
+
+                                                    return (
+                                                        <div className="flex flex-col items-center gap-4 py-2">
+                                                            {/* 11x11 BOARD */}
+                                                            <div className="grid grid-cols-11 gap-[2px] bg-indigo-900 p-1 rounded-lg border-2 border-indigo-950 shadow-inner select-none touch-none">
+                                                                {displayBoard.map((cell, i) => {
+                                                                    const isCenter = i === 60;
+                                                                    const isTemporary = cell?.temporary;
+                                                                    const bonus = getBonusType(i);
+
+                                                                    // Bonus square colors
+                                                                    const bonusStyles = {
+                                                                        'TW': 'bg-red-500/80 text-red-100',
+                                                                        'DW': 'bg-pink-400/70 text-pink-100',
+                                                                        'TL': 'bg-blue-500/80 text-blue-100',
+                                                                        'DL': 'bg-sky-400/70 text-sky-100',
+                                                                        'STAR': 'bg-indigo-600 text-amber-300'
+                                                                    };
+                                                                    const bonusLabels = { 'TW': '3×W', 'DW': '2×W', 'TL': '3×L', 'DL': '2×L', 'STAR': '★' };
+
+                                                                    return (
+                                                                        <div
+                                                                            key={i}
+                                                                            onClick={() => handleBoardClick(i)}
+                                                                            className={`w-8 h-8 flex items-center justify-center text-[10px] font-bold rounded-[3px] transition-all relative
+                                                                                ${cell
+                                                                                    ? (isTemporary ? 'bg-amber-200 text-amber-900 shadow-md transform scale-105 z-10 animate-pop' : 'bg-amber-100 text-amber-900 shadow-sm border border-amber-200')
+                                                                                    : (bonus ? bonusStyles[bonus] : 'bg-indigo-50/10')
+                                                                                }
+                                                                                ${(selectedTileIndex !== null && !cell) ? 'animate-pulse ring-2 ring-amber-400 cursor-pointer' : ''}
+                                                                            `}
+                                                                        >
+                                                                            {cell ? (
+                                                                                <>
+                                                                                    <span className="text-sm font-black">{cell.char}</span>
+                                                                                    <span className="absolute bottom-0 right-0.5 text-[7px] font-bold opacity-70">{LETTER_POINTS[cell.char] || 0}</span>
+                                                                                </>
+                                                                            ) : (bonus ? <span className="text-[7px] font-bold">{bonusLabels[bonus]}</span> : '')}
+                                                                        </div>
+                                                                    );
+                                                                })}
+                                                            </div>
+
+                                                            {/* SCORES & MOVE HISTORY */}
+                                                            <div className="w-full flex justify-between items-center px-2 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
+                                                                <div className="text-center">
+                                                                    <p className="text-[9px] font-bold text-indigo-400 uppercase">{husbandName || 'Him'}</p>
+                                                                    <p className="text-lg font-black text-indigo-700">{activeGame.players?.his?.score || 0}</p>
                                                                 </div>
-                                                            ))}
+                                                                <div className="text-center px-3">
+                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Tiles Left</p>
+                                                                    <p className="text-sm font-bold text-slate-600">{activeGame.bag?.length || 0}</p>
+                                                                </div>
+                                                                <div className="text-center">
+                                                                    <p className="text-[9px] font-bold text-purple-400 uppercase">{wifeName || 'Her'}</p>
+                                                                    <p className="text-lg font-black text-purple-700">{activeGame.players?.hers?.score || 0}</p>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Last Move */}
+                                                            {activeGame.history?.length > 0 && (
+                                                                <div className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                                                                    <p className="text-[10px] text-amber-700">
+                                                                        <span className="font-bold">{activeGame.history[activeGame.history.length - 1]?.player === 'his' ? (husbandName || 'Him') : (wifeName || 'Her')}</span>
+                                                                        {' scored '}
+                                                                        <span className="font-black text-amber-900">{activeGame.history[activeGame.history.length - 1]?.points} pts</span>
+                                                                        {activeGame.history[activeGame.history.length - 1]?.word && ` with "${activeGame.history[activeGame.history.length - 1]?.word}"`}
+                                                                    </p>
+                                                                </div>
+                                                            )}
+
+                                                            {/* RACK / HAND */}
+                                                            <div className="flex flex-col items-center gap-2 w-full">
+                                                                <div className="w-full bg-amber-800 p-3 rounded-xl shadow-lg flex justify-center gap-2 min-h-[60px]">
+                                                                    {handDisplay.map((tile, i) => (
+                                                                        <div
+                                                                            key={i}
+                                                                            onClick={() => !tile.isPlaced && handleTileClick(tile.originalIndex, tile.char)}
+                                                                            className={`w-10 h-10 rounded flex items-center justify-center font-black text-lg shadow transition-all relative
+                                                                                ${tile.isPlaced
+                                                                                    ? 'bg-amber-900/50 text-amber-900/50 border-none'
+                                                                                    : (tile.isSelected
+                                                                                        ? 'bg-amber-300 text-amber-950 border-b-4 border-amber-500 -translate-y-1'
+                                                                                        : 'bg-amber-100 text-amber-900 border-b-4 border-amber-300 hover:bg-amber-50')
+                                                                                }
+                                                                            `}
+                                                                        >
+                                                                            <span>{tile.char}</span>
+                                                                            {!tile.isPlaced && <span className="absolute bottom-0.5 right-1 text-[8px] font-bold opacity-60">{LETTER_POINTS[tile.char] || 0}</span>}
+                                                                        </div>
+                                                                    ))}
+                                                                </div>
+
+                                                                {/* Primary Controls */}
+                                                                <div className="flex gap-2 w-full">
+                                                                    <button
+                                                                        onClick={recallAllTiles}
+                                                                        disabled={placedTiles.length === 0}
+                                                                        className="flex-1 py-3 bg-red-100 text-red-600 font-bold text-xs rounded-xl disabled:opacity-50"
+                                                                    >
+                                                                        Recall
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => shuffleHand(activeGame.id)}
+                                                                        disabled={!isMyTurn}
+                                                                        className="flex-1 py-3 bg-blue-100 text-blue-600 font-bold text-xs rounded-xl disabled:opacity-50"
+                                                                    >
+                                                                        🔀 Shuffle
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={submitLetterLinkMove}
+                                                                        disabled={!isMyTurn || placedTiles.length === 0}
+                                                                        className="flex-2 w-full py-3 bg-green-500 text-white font-black text-xs rounded-xl disabled:bg-slate-300 disabled:text-slate-500 shadow-lg"
+                                                                    >
+                                                                        {isMyTurn ? '✓ Submit' : 'Waiting...'}
+                                                                    </button>
+                                                                </div>
+
+                                                                {/* Secondary Controls */}
+                                                                <div className="flex gap-2 w-full">
+                                                                    <button
+                                                                        onClick={() => passLetterLinkTurn(activeGame.id)}
+                                                                        disabled={!isMyTurn || placedTiles.length > 0}
+                                                                        className="flex-1 py-2 bg-slate-100 text-slate-500 font-bold text-[10px] rounded-lg disabled:opacity-40"
+                                                                    >
+                                                                        ⏭ Pass Turn
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={() => endLetterLinkGame(activeGame.id)}
+                                                                        className="flex-1 py-2 bg-orange-100 text-orange-500 font-bold text-[10px] rounded-lg"
+                                                                    >
+                                                                        🏁 End Game
+                                                                    </button>
+                                                                </div>
+                                                            </div>
                                                         </div>
-                                                        <p className="text-[10px] text-slate-400">Drag & Drop coming soon!</p>
-                                                    </div>
-                                                );
+                                                    );
+                                                })();
                                             })()}
 
                                             {/* Turn Indicator & Input */}
