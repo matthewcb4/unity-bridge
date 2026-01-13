@@ -192,6 +192,11 @@ const App = () => {
     const [kidJournalItems, setKidJournalItems] = useState([]);
     const [kidBridgeItems, setKidBridgeItems] = useState([]);
 
+    // Parent PIN Authentication
+    const [parentPinInput, setParentPinInput] = useState('');
+    const [showParentPinModal, setShowParentPinModal] = useState(false);
+    const [pendingParentRole, setPendingParentRole] = useState(null); // 'his' or 'hers' - which parent is trying to log in
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -1396,7 +1401,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     {/* Hub Buttons - Compact */}
                     <div className="grid grid-cols-2 w-full gap-3">
                         <button
-                            onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); setAffectionType('primary'); } }}
+                            onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
                             className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
                         >
                             <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
@@ -1408,7 +1413,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             </div>
                         </button>
                         <button
-                            onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); setAffectionType('primary'); } }}
+                            onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
                             className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
                         >
                             <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
@@ -1450,7 +1455,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         {/* Parent Buttons */}
                         <div className="grid grid-cols-2 gap-2">
                             <button
-                                onClick={() => { if (coupleCode) { setRole('his'); localStorage.setItem('user_role', 'his'); setView('hub'); } }}
+                                onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
                                 disabled={!coupleCode}
                                 className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
                             >
@@ -1458,7 +1463,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 <span className="text-[10px] font-bold text-blue-600">{husbandName || 'Dad'}</span>
                             </button>
                             <button
-                                onClick={() => { if (coupleCode) { setRole('hers'); localStorage.setItem('user_role', 'hers'); setView('hub'); } }}
+                                onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
                                 disabled={!coupleCode}
                                 className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
                             >
@@ -1536,6 +1541,62 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 <div className="flex gap-2">
                                     <button
                                         onClick={() => { setCurrentKid(null); setKidPinInput(''); }}
+                                        className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Parent PIN Modal */}
+                    {showParentPinModal && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                            <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                <div className="text-center">
+                                    <span className="text-5xl">{pendingParentRole === 'his' ? '👨' : '👩'}</span>
+                                    <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>
+                                        {pendingParentRole === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife')}
+                                    </h3>
+                                    <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
+                                    <p className="text-[10px] text-slate-400 mt-1">(First time? Use 0000 to set up)</p>
+                                </div>
+
+                                <input
+                                    type="password"
+                                    inputMode="numeric"
+                                    maxLength={4}
+                                    value={parentPinInput}
+                                    onChange={(e) => {
+                                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                        setParentPinInput(val);
+                                        // Auto-submit on 4 digits
+                                        if (val.length === 4) {
+                                            // Get stored PIN (default to 0000 for first time)
+                                            const storedPin = localStorage.getItem(`${pendingParentRole}_pin`) || '0000';
+                                            if (val === storedPin) {
+                                                setRole(pendingParentRole);
+                                                localStorage.setItem('user_role', pendingParentRole);
+                                                setShowParentPinModal(false);
+                                                setParentPinInput('');
+                                                setPendingParentRole(null);
+                                                setView('hub');
+                                                setAffectionType('primary');
+                                            } else {
+                                                alert('Wrong PIN! Try again.');
+                                                setParentPinInput('');
+                                            }
+                                        }
+                                    }}
+                                    className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                                    placeholder="••••"
+                                    autoFocus
+                                />
+
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => { setShowParentPinModal(false); setParentPinInput(''); setPendingParentRole(null); }}
                                         className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
                                     >
                                         Cancel
@@ -1876,6 +1937,86 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                             <div className={`w-6 h-6 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-7' : 'left-0.5'}`} />
                                         </button>
                                     </div>
+
+                                    {/* Pet Names */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
+                                            <input
+                                                value={husbandPetName}
+                                                onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
+                                                placeholder="e.g. honey, babe"
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
+                                            <input
+                                                value={wifePetName}
+                                                onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
+                                                placeholder="e.g. sweetie, love"
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Love Languages */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
+                                            <select
+                                                value={hisLoveLanguage}
+                                                onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
+                                            >
+                                                <option>Physical Touch</option>
+                                                <option>Words of Affirmation</option>
+                                                <option>Quality Time</option>
+                                                <option>Acts of Service</option>
+                                                <option>Receiving Gifts</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
+                                            <select
+                                                value={herLoveLanguage}
+                                                onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
+                                            >
+                                                <option>Words of Affirmation</option>
+                                                <option>Physical Touch</option>
+                                                <option>Quality Time</option>
+                                                <option>Acts of Service</option>
+                                                <option>Receiving Gifts</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    {/* Family Management */}
+                                    <button
+                                        onClick={() => setShowKidManager(true)}
+                                        className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-purple-900/50 text-purple-400 border border-purple-700' : 'bg-purple-50 text-purple-600 border border-purple-200'}`}
+                                    >
+                                        <Users className="w-4 h-4" />
+                                        👨‍👩‍👧‍👦 Manage Kids
+                                    </button>
+
+                                    {/* Change PIN */}
+                                    <button
+                                        onClick={() => {
+                                            const newPin = prompt('Enter new 4-digit PIN:');
+                                            if (newPin && /^\d{4}$/.test(newPin)) {
+                                                localStorage.setItem(`${role}_pin`, newPin);
+                                                alert('PIN updated successfully!');
+                                            } else if (newPin !== null) {
+                                                alert('Please enter exactly 4 digits.');
+                                            }
+                                        }}
+                                        className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}
+                                    >
+                                        <Lock className="w-4 h-4" />
+                                        🔐 Change My PIN
+                                    </button>
 
                                     {/* Milestones */}
                                     <div className="space-y-3">
@@ -3288,9 +3429,6 @@ Generated by Unity Bridge - Relationship OS`;
             {
                 view !== 'home' && (
                     <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => setShowKidManager(true)} className={`flex flex-col items-center gap-0.5 transition-all ${showKidManager ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
-                            <Users className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Family</span>
-                        </button>
                         <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
                             <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
                         </button>
