@@ -1329,60 +1329,6 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             </div>
                         </div>
 
-                        {/* Pet Names Row */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
-                                <input
-                                    value={husbandPetName}
-                                    onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
-                                    placeholder="e.g. honey, babe, love (comma separated)"
-                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
-                                <input
-                                    value={wifePetName}
-                                    onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
-                                    placeholder="e.g. sweetie, love, darling (comma separated)"
-                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Love Languages Row */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
-                                <select
-                                    value={hisLoveLanguage}
-                                    onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
-                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
-                                >
-                                    <option>Physical Touch</option>
-                                    <option>Words of Affirmation</option>
-                                    <option>Quality Time</option>
-                                    <option>Acts of Service</option>
-                                    <option>Receiving Gifts</option>
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
-                                <select
-                                    value={herLoveLanguage}
-                                    onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
-                                    className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
-                                >
-                                    <option>Words of Affirmation</option>
-                                    <option>Physical Touch</option>
-                                    <option>Quality Time</option>
-                                    <option>Acts of Service</option>
-                                    <option>Receiving Gifts</option>
-                                </select>
-                            </div>
-                        </div>
-
                         {/* Couple Code */}
                         <div className="space-y-1.5">
                             <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
