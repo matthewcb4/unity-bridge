@@ -17,6 +17,7 @@ import {
     onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
 import { calculateMoveScore, getBonusType, LETTER_POINTS } from './letterLinkLogic';
+import { SHIPS, GRID_SIZE, createEmptyGrid, isValidPlacement, placeShipOnGrid, processAttack, checkAllShipsSunk, countRemainingShips, getAttackDisplay, hasPlacedAllShips } from './battleshipLogic';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
@@ -149,6 +150,13 @@ const App = () => {
     const [scoreboardFilter, setScoreboardFilter] = useState('all'); // all, 7days, 30days
     const [gameTurn, setGameTurn] = useState(null); // 'his' or 'hers' - whose turn to guess
     const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
+
+    // Battleship Game State
+    const [battleshipPhase, setBattleshipPhase] = useState('placing'); // 'placing' | 'battle' | 'ended'
+    const [battleshipSelectedShip, setBattleshipSelectedShip] = useState(null); // Currently selected ship for placement
+    const [battleshipOrientation, setBattleshipOrientation] = useState('horizontal'); // 'horizontal' | 'vertical'
+    const [localShipPlacements, setLocalShipPlacements] = useState({}); // { shipType: { row, col, orientation } }
+    const [localPlacementGrid, setLocalPlacementGrid] = useState(createEmptyGrid()); // Local grid during placement
 
     // NEW: Dark Mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
@@ -1248,6 +1256,190 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         }
     };
 
+    // BATTLESHIP GAME LOGIC
+    const createBattleshipGame = async (wager = '') => {
+        if (!coupleCode || !db || !role) return;
+
+        try {
+            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
+            const docRef = await addDoc(gamesRef, {
+                type: 'battleship',
+                wager: wager,
+                createdBy: role,
+                creatorName: role === 'his' ? husbandName : wifeName,
+                createdAt: serverTimestamp(),
+                phase: 'placing', // 'placing' | 'battle' | 'ended'
+                currentTurn: role, // Who attacks next (during battle phase)
+                players: {
+                    his: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 },
+                    hers: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 }
+                },
+                winner: null
+            });
+            alert('Battleship game created! Place your ships.');
+            setCurrentGameId(docRef.id);
+            // Reset local placement state
+            setLocalShipPlacements({});
+            setLocalPlacementGrid(createEmptyGrid());
+            setBattleshipSelectedShip(null);
+            setBattleshipPhase('placing');
+        } catch (err) {
+            console.error('Create Battleship error:', err);
+            alert('Failed to start Battleship game.');
+        }
+    };
+
+    const placeBattleshipShip = (row, col) => {
+        if (!battleshipSelectedShip) {
+            alert('Select a ship first!');
+            return;
+        }
+
+        if (localShipPlacements[battleshipSelectedShip]) {
+            alert(`${SHIPS[battleshipSelectedShip].name} already placed! Select another ship or tap "Ready".`);
+            return;
+        }
+
+        if (!isValidPlacement(localPlacementGrid, battleshipSelectedShip, row, col, battleshipOrientation)) {
+            alert('Invalid placement! Ships cannot overlap or go out of bounds.');
+            return;
+        }
+
+        const newGrid = placeShipOnGrid(localPlacementGrid, battleshipSelectedShip, row, col, battleshipOrientation);
+        setLocalPlacementGrid(newGrid);
+        setLocalShipPlacements(prev => ({
+            ...prev,
+            [battleshipSelectedShip]: { row, col, orientation: battleshipOrientation }
+        }));
+        setBattleshipSelectedShip(null); // Deselect after placing
+    };
+
+    const confirmBattleshipPlacement = async (gameId) => {
+        if (!hasPlacedAllShips(localPlacementGrid)) {
+            alert('Place all 5 ships before confirming!');
+            return;
+        }
+
+        try {
+            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId);
+            const gameSnap = await getDoc(gameRef);
+            if (!gameSnap.exists()) return;
+
+            const gameData = gameSnap.data();
+            const playerKey = role;
+
+            // Update player's grid and mark as ready
+            const updatedPlayers = { ...gameData.players };
+            updatedPlayers[playerKey] = {
+                ...updatedPlayers[playerKey],
+                grid: JSON.stringify(localPlacementGrid),
+                ready: true
+            };
+
+            // Check if both players are ready
+            const otherPlayer = playerKey === 'his' ? 'hers' : 'his';
+            const bothReady = updatedPlayers[otherPlayer].ready && updatedPlayers[playerKey].ready;
+
+            await updateDoc(gameRef, {
+                players: updatedPlayers,
+                phase: bothReady ? 'battle' : 'placing',
+                currentTurn: bothReady ? gameData.createdBy : gameData.currentTurn // Creator goes first in battle
+            });
+
+            if (bothReady) {
+                alert('Both players ready! Battle begins!');
+            } else {
+                alert('Ships placed! Waiting for opponent...');
+            }
+        } catch (err) {
+            console.error('Confirm placement error:', err);
+            alert('Failed to confirm placement.');
+        }
+    };
+
+    const attackBattleshipCell = async (gameId, row, col) => {
+        try {
+            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId);
+            const gameSnap = await getDoc(gameRef);
+            if (!gameSnap.exists()) return;
+
+            const gameData = gameSnap.data();
+
+            if (gameData.currentTurn !== role) {
+                alert("Not your turn!");
+                return;
+            }
+
+            const opponentKey = role === 'his' ? 'hers' : 'his';
+            const opponentGrid = JSON.parse(gameData.players[opponentKey].grid);
+            const myAttackGrid = JSON.parse(gameData.players[role].attackGrid);
+
+            // Check if already attacked
+            if (myAttackGrid[row][col] !== null) {
+                alert('Already attacked this cell!');
+                return;
+            }
+
+            // Process attack on opponent's grid
+            const { result, shipType, newGrid } = processAttack(opponentGrid, row, col);
+
+            // Update my attack grid to show hit/miss
+            myAttackGrid[row][col] = result === 'hit' || result === 'sunk' ? { hit: true } : 'miss';
+
+            const updatedPlayers = { ...gameData.players };
+            updatedPlayers[opponentKey].grid = JSON.stringify(newGrid);
+            updatedPlayers[role].attackGrid = JSON.stringify(myAttackGrid);
+
+            // Check for win
+            const opponentAllSunk = checkAllShipsSunk(newGrid);
+            const remainingShips = countRemainingShips(newGrid);
+            updatedPlayers[opponentKey].shipsRemaining = remainingShips;
+
+            let alertMsg = result === 'miss' ? '💨 Miss!' : result === 'sunk' ? `💥 You sunk their ${SHIPS[shipType].name}!` : '💥 Hit!';
+
+            if (opponentAllSunk) {
+                // Game over - current player wins
+                await updateDoc(gameRef, {
+                    players: updatedPlayers,
+                    phase: 'ended',
+                    winner: role,
+                    currentTurn: null
+                });
+
+                // Add to game history
+                const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
+                await addDoc(historyRef, {
+                    type: 'battleship',
+                    word: 'Battleship Victory',
+                    solvedBy: role,
+                    solverName: role === 'his' ? husbandName : wifeName,
+                    points: 50, // Battleship wins worth 50 points
+                    completedAt: serverTimestamp(),
+                    wager: gameData.wager || ''
+                });
+
+                alert('🎉 You won! All enemy ships destroyed!');
+            } else {
+                // Switch turns
+                await updateDoc(gameRef, {
+                    players: updatedPlayers,
+                    currentTurn: opponentKey
+                });
+                alert(alertMsg);
+            }
+
+            // Send notification to opponent
+            sendNotification(
+                opponentAllSunk ? 'Game Over!' : "Your turn!",
+                opponentAllSunk ? 'You lost the Battleship game!' : `Your opponent ${result === 'sunk' ? 'sunk your ship!' : result === 'hit' ? 'hit your ship!' : 'missed!'}`,
+                'games'
+            );
+
+        } catch (err) {
+            console.error('Attack error:', err);
+            alert('Failed to attack.');
+        }
+    };
 
     const clearBridgeView = () => {
         if (window.confirm('Clear your bridge history? (This only clears your view, not your partner\'s)')) {
@@ -2839,6 +3031,146 @@ Generated by Unity Bridge - Relationship OS`;
                                                 })();
                                             })()}
 
+                                            {/* BATTLESHIP UI */}
+                                            {activeGame.type === 'battleship' && (() => {
+                                                const myPlayerData = activeGame.players?.[role] || {};
+                                                const opponentKey = role === 'his' ? 'hers' : 'his';
+                                                const opponentData = activeGame.players?.[opponentKey] || {};
+                                                const phase = activeGame.phase || 'placing';
+                                                const isMyTurnBs = activeGame.currentTurn === role;
+                                                const winner = activeGame.winner;
+
+                                                let myGrid = [], myAttackGrid = [];
+                                                try {
+                                                    myGrid = JSON.parse(myPlayerData.grid || '[]');
+                                                    myAttackGrid = JSON.parse(myPlayerData.attackGrid || '[]');
+                                                } catch (e) { }
+                                                if (myGrid.length === 0) myGrid = createEmptyGrid();
+                                                if (myAttackGrid.length === 0) myAttackGrid = createEmptyGrid();
+
+                                                const displayGrid = phase === 'placing' && !myPlayerData.ready ? localPlacementGrid : myGrid;
+
+                                                return (
+                                                    <div className="space-y-3">
+                                                        <div className="text-center">
+                                                            <p className="text-[10px] font-bold text-cyan-500 uppercase">
+                                                                {phase === 'placing' ? '🚢 Place Your Ships' : phase === 'battle' ? '💥 Battle Phase' : '🏆 Game Over'}
+                                                            </p>
+                                                            {winner && (
+                                                                <p className={`text-lg font-black ${winner === role ? 'text-green-600' : 'text-red-500'}`}>
+                                                                    {winner === role ? '🎉 You Won!' : '💀 You Lost!'}
+                                                                </p>
+                                                            )}
+                                                        </div>
+
+                                                        {phase === 'placing' && !myPlayerData.ready && (
+                                                            <>
+                                                                <div className="space-y-2">
+                                                                    <p className="text-[9px] font-black text-slate-400 uppercase">Select Ship:</p>
+                                                                    <div className="grid grid-cols-5 gap-1">
+                                                                        {Object.entries(SHIPS).map(([type, ship]) => (
+                                                                            <button
+                                                                                key={type}
+                                                                                onClick={() => setBattleshipSelectedShip(type)}
+                                                                                disabled={!!localShipPlacements[type]}
+                                                                                className={`p-2 rounded-xl text-center transition-all ${localShipPlacements[type] ? 'bg-green-100 opacity-50'
+                                                                                        : battleshipSelectedShip === type ? 'bg-cyan-500 text-white ring-2 ring-cyan-300'
+                                                                                            : 'bg-slate-100 hover:bg-cyan-50'
+                                                                                    }`}
+                                                                            >
+                                                                                <span className="text-xl">{ship.emoji}</span>
+                                                                                <p className="text-[8px] font-bold">{ship.size}</p>
+                                                                            </button>
+                                                                        ))}
+                                                                    </div>
+                                                                    <button onClick={() => setBattleshipOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')} className="w-full py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
+                                                                        {battleshipOrientation === 'horizontal' ? '↔️ Horizontal' : '↕️ Vertical'}
+                                                                    </button>
+                                                                </div>
+
+                                                                <div className="flex justify-center">
+                                                                    <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
+                                                                        {displayGrid.flat().map((cell, idx) => {
+                                                                            const row = Math.floor(idx / GRID_SIZE);
+                                                                            const col = idx % GRID_SIZE;
+                                                                            const hasShip = cell && cell.ship;
+                                                                            return (
+                                                                                <button key={idx} onClick={() => placeBattleshipShip(row, col)}
+                                                                                    className={`w-7 h-7 rounded-sm text-xs font-bold transition-all ${hasShip ? 'bg-cyan-500 text-white' : 'bg-blue-100 hover:bg-cyan-200'}`}>
+                                                                                    {hasShip ? '🚢' : ''}
+                                                                                </button>
+                                                                            );
+                                                                        })}
+                                                                    </div>
+                                                                </div>
+
+                                                                <button onClick={() => confirmBattleshipPlacement(activeGame.id)} disabled={Object.keys(localShipPlacements).length < 5}
+                                                                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-black text-sm rounded-xl disabled:opacity-50">
+                                                                    ✓ Ready! ({Object.keys(localShipPlacements).length}/5 ships)
+                                                                </button>
+                                                            </>
+                                                        )}
+
+                                                        {phase === 'placing' && myPlayerData.ready && (
+                                                            <div className="text-center py-6">
+                                                                <p className="text-2xl mb-2">⏳</p>
+                                                                <p className="text-sm font-bold text-slate-600">Ships placed!</p>
+                                                                <p className="text-xs text-slate-400">Waiting for opponent...</p>
+                                                            </div>
+                                                        )}
+
+                                                        {phase === 'battle' && (
+                                                            <>
+                                                                <div className={`p-2 rounded-xl text-center ${isMyTurnBs ? 'bg-red-100 border-2 border-red-200' : 'bg-slate-100'}`}>
+                                                                    <p className="text-xs font-bold">
+                                                                        {isMyTurnBs ? <span className="text-red-600">🎯 FIRE!</span> : <span className="text-slate-500">⏳ Waiting...</span>}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2 text-center">
+                                                                    <div className="bg-cyan-50 p-2 rounded-xl">
+                                                                        <p className="text-[9px] font-black text-cyan-500 uppercase">Your Ships</p>
+                                                                        <p className="text-lg font-black">{myPlayerData.shipsRemaining || 5} 🚢</p>
+                                                                    </div>
+                                                                    <div className="bg-red-50 p-2 rounded-xl">
+                                                                        <p className="text-[9px] font-black text-red-500 uppercase">Enemy Ships</p>
+                                                                        <p className="text-lg font-black">{opponentData.shipsRemaining || 5} 🚢</p>
+                                                                    </div>
+                                                                </div>
+                                                                <div>
+                                                                    <p className="text-[9px] font-black text-red-400 uppercase mb-1 text-center">Tap Enemy Waters to Attack</p>
+                                                                    <div className="flex justify-center">
+                                                                        <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
+                                                                            {myAttackGrid.flat().map((cell, idx) => {
+                                                                                const row = Math.floor(idx / GRID_SIZE);
+                                                                                const col = idx % GRID_SIZE;
+                                                                                const isHit = cell && (cell.hit || cell === 'miss');
+                                                                                const displayChar = cell === 'miss' ? '⚪' : (cell && cell.hit) ? '💥' : '';
+                                                                                return (
+                                                                                    <button key={idx} onClick={() => isMyTurnBs && !isHit && attackBattleshipCell(activeGame.id, row, col)}
+                                                                                        disabled={!isMyTurnBs || isHit}
+                                                                                        className={`w-7 h-7 rounded-sm text-xs font-bold transition-all ${isHit ? (cell === 'miss' ? 'bg-slate-200' : 'bg-red-400')
+                                                                                                : isMyTurnBs ? 'bg-blue-200 hover:bg-red-200 cursor-crosshair' : 'bg-blue-100 opacity-60'
+                                                                                            }`}>
+                                                                                        {displayChar}
+                                                                                    </button>
+                                                                                );
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+                                                            </>
+                                                        )}
+
+                                                        {phase === 'ended' && (
+                                                            <button onClick={() => { deleteActiveGame(activeGame.id); setCurrentGameId(null); }}
+                                                                className="w-full py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl">
+                                                                Close Game
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                );
+                                            })()}
+
                                             {/* Turn Indicator & Input */}
                                             {(() => {
                                                 const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
@@ -2908,6 +3240,36 @@ Generated by Unity Bridge - Relationship OS`;
                                     );
                                 }
 
+                                // 2b. CREATE NEW BATTLESHIP UI
+                                if (selectedGame === 'battleship') {
+                                    return (
+                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-cyan-100 p-6 space-y-4">
+                                            <h3 className="text-center text-sm font-black text-cyan-600 uppercase">New Battleship Game</h3>
+                                            <p className="text-xs text-center text-slate-400">Classic 10×10 naval warfare!</p>
+                                            <div className="text-center py-2">
+                                                <span className="text-4xl">⚓🚢💥</span>
+                                            </div>
+                                            <input
+                                                type="text"
+                                                placeholder="Optional wager for the winner..."
+                                                className="w-full p-4 bg-cyan-50 border border-cyan-100 rounded-2xl text-sm outline-none focus:border-cyan-300"
+                                                id="bs-wager-input"
+                                            />
+                                            <button
+                                                onClick={() => {
+                                                    const wager = document.getElementById('bs-wager-input')?.value || '';
+                                                    createBattleshipGame(wager);
+                                                    setSelectedGame(null);
+                                                }}
+                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-cyan-500 to-teal-500 rounded-2xl shadow-lg"
+                                            >
+                                                ⚓ Start Battle
+                                            </button>
+                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
+                                        </div>
+                                    );
+                                }
+
                                 // 2. CREATE NEW SCRAMBLE (Existing)
                                 if (selectedGame === 'word_scramble') {
                                     return (
@@ -2951,12 +3313,15 @@ Generated by Unity Bridge - Relationship OS`;
                                                             className={`w-full p-4 rounded-2xl border text-left transition-all ${isMyTurn ? 'bg-white border-purple-200 shadow-md ring-2 ring-purple-100' : 'bg-slate-50 border-slate-100 opacity-80'}`}
                                                         >
                                                             <div className="flex justify-between items-center mb-1">
-                                                                <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? 'Word Scramble' : 'Letter Link'}</span>
-                                                                {isMyTurn && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
+                                                                <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? 'Word Scramble' : game.type === 'letter_link' ? 'Letter Link' : 'Battleship'}</span>
+                                                                {game.type === 'battleship' && game.phase === 'placing' && !game.players[role]?.ready && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">PLACE SHIPS</span>}
+                                                                {game.type === 'battleship' && game.phase === 'placing' && game.players[role]?.ready && <span className="text-[9px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">WAITING</span>}
+                                                                {isMyTurn && game.type !== 'battleship' && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
+                                                                {isMyTurn && game.type === 'battleship' && game.phase === 'battle' && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-full">FIRE!</span>}
                                                             </div>
                                                             <div className="flex justify-between items-end">
                                                                 <div className="text-sm font-bold text-slate-700">
-                                                                    {game.type === 'word_scramble' ? (game.scrambled || 'Puzzle') : 'Ongoing Match'}
+                                                                    {game.type === 'word_scramble' ? (game.scrambled || 'Puzzle') : game.type === 'battleship' ? `⚓ ${game.phase === 'placing' ? 'Setup' : game.phase === 'battle' ? 'Battle' : 'Ended'}` : 'Ongoing Match'}
                                                                 </div>
                                                                 <div className="text-xs text-slate-400">
                                                                     vs {game.creatorName === (husbandName || 'Husband') ? (wifeName || 'Wife') : (husbandName || 'Husband')}
@@ -2991,6 +3356,17 @@ Generated by Unity Bridge - Relationship OS`;
                                                     <div>
                                                         <p className="font-bold text-slate-800 text-sm">Letter Link</p>
                                                         <p className="text-[10px] text-slate-500">Scrabble-style with Memory Checks!</p>
+                                                    </div>
+                                                </button>
+
+                                                <button
+                                                    onClick={() => setSelectedGame('battleship')}
+                                                    className="p-4 bg-gradient-to-r from-cyan-50 to-teal-50 border-2 border-cyan-100 rounded-2xl text-left hover:border-cyan-300 transition-all flex items-center gap-4"
+                                                >
+                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">⚓</div>
+                                                    <div>
+                                                        <p className="font-bold text-slate-800 text-sm">Battleship</p>
+                                                        <p className="text-[10px] text-slate-500">Classic naval warfare!</p>
                                                     </div>
                                                 </button>
                                             </div>
