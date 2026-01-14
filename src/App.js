@@ -351,26 +351,36 @@ const App = () => {
             ? namesList.map(n => `"${n}"`).join(' OR ')
             : `"${receiverPetName}"`;
 
-        const systemPrompt = `You are a relationship expert helping ${sender} write loving messages to ${receiver}.
+        // Add randomization seed for variety
+        const varietySeed = Date.now() % 1000;
+        const tones = ['playful', 'romantic', 'passionate', 'tender', 'flirtatious', 'heartfelt', 'sweet', 'devoted'];
+        const randomTone = tones[Math.floor(Math.random() * tones.length)];
 
-Partner's PRIMARY love language: ${partnerLanguage}
-Partner's pet name options: ${formattedNames}
-(Choose ONLY ONE of these names to address them in each message. VARY the choice across messages.)
+        const systemPrompt = `You are ${sender}'s inner voice, helping write authentic, heartfelt messages to ${receiver}.
 
-Generate COMPLETE, READY-TO-SEND text messages that ${sender} can copy and paste directly to send to ${receiver}. 
-Use one of the provided pet names naturally in the messages. If multiple names are listed, randomly select one for each message to ensure variety.
-DO NOT write instructions like "Text her..." or "Leave a note saying...". 
-Write the ACTUAL MESSAGE CONTENT ONLY - as if you are ${sender} speaking directly to ${receiver}.
+🎲 UNIQUENESS SEED: ${varietySeed} - Generate COMPLETELY DIFFERENT messages than any previous request.
 
-For each category, write 3 heartfelt messages:
-- Category "${cats.primary[0]}": 3 complete messages
-- Category "${cats.primary[1]}": 3 complete messages  
-- Category "${cats.primary[2]}": 3 complete messages
-- Category "${cats.secondary[0]}": 3 complete messages
-- Category "${cats.secondary[1]}": 3 complete messages
-- Category "${cats.secondary[2]}": 3 complete messages
+💕 Partner's love language: ${partnerLanguage}
+💝 Pet name options: ${formattedNames} (Pick ONE per message, vary your choices)
+🎭 Tone for this batch: ${randomTone} with natural variety
 
-Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["message1", "message2", "message3"], "${cats.primary[1]}": ["message1", "message2", "message3"], "${cats.primary[2]}": ["message1", "message2", "message3"] }, "secondary": { "${cats.secondary[0]}": ["message1", "message2", "message3"], "${cats.secondary[1]}": ["message1", "message2", "message3"], "${cats.secondary[2]}": ["message1", "message2", "message3"] } }`;
+CRITICAL RULES FOR VARIETY:
+- NEVER start messages the same way. Use different openings: questions, statements, memories, desires, observations
+- Vary message lengths: some short (1 line), some medium (2-3 lines), some longer with emotion
+- Include specific details: times of day, activities, physical descriptions, memories
+- Mix: flirty, sincere, playful, deep emotional, funny, tender
+- NO generic phrases like "I was just thinking..." or "You mean so much to me" 
+- Each message should feel UNIQUE and personal
+
+For each category, write 3 DISTINCTLY DIFFERENT messages:
+- Category "${cats.primary[0]}": 3 varied messages
+- Category "${cats.primary[1]}": 3 varied messages  
+- Category "${cats.primary[2]}": 3 varied messages
+- Category "${cats.secondary[0]}": 3 varied messages
+- Category "${cats.secondary[1]}": 3 varied messages
+- Category "${cats.secondary[2]}": 3 varied messages
+
+Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["msg1", "msg2", "msg3"], "${cats.primary[1]}": ["msg1", "msg2", "msg3"], "${cats.primary[2]}": ["msg1", "msg2", "msg3"] }, "secondary": { "${cats.secondary[0]}": ["msg1", "msg2", "msg3"], "${cats.secondary[1]}": ["msg1", "msg2", "msg3"], "${cats.secondary[2]}": ["msg1", "msg2", "msg3"] } }`;
 
         const result = await callGemini(systemPrompt);
         if (result) {
@@ -811,6 +821,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 createdBy: role,
                 creatorName: creatorName,
                 createdAt: serverTimestamp(),
+                currentTurn: role === 'his' ? 'hers' : 'his', // Other player goes first
+                hisScore: 0,
+                hersScore: 0,
+                targetScore: 10, // First to 10 wins!
                 solved: false
             });
             setGameAnswer('');
@@ -1105,28 +1119,54 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
         const isCorrect = answer.toUpperCase().trim() === game.word;
         const playerName = role === 'his' ? husbandName : wifeName;
+        const scoreKey = role === 'his' ? 'hisScore' : 'hersScore';
 
         if (isCorrect) {
             try {
-                // Save to history
-                const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
-                await addDoc(historyRef, {
-                    type: game.type,
-                    word: game.word,
-                    wager: game.wager,
-                    createdBy: game.createdBy,
-                    creatorName: game.creatorName,
-                    solvedBy: role,
-                    solverName: playerName,
-                    points: 10 + (game.isPersonal ? 10 : 0), // Base + Bonus
-                    completedAt: serverTimestamp()
-                });
+                // Calculate new score (defaults to 0 for old games without scores)
+                const currentScore = (game[scoreKey] || 0) + 1;
+                const targetScore = game.targetScore || 10;
 
-                // Delete the game from active list (it's done)
-                await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
-                setCurrentGameId(null);
+                // Check if this player wins
+                if (currentScore >= targetScore) {
+                    // WINNER! Save to history and delete game
+                    const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
+                    await addDoc(historyRef, {
+                        type: game.type,
+                        wager: game.wager,
+                        createdBy: game.createdBy,
+                        creatorName: game.creatorName,
+                        solvedBy: role,
+                        solverName: playerName,
+                        finalScoreHis: role === 'his' ? currentScore : (game.hisScore || 0),
+                        finalScoreHers: role === 'hers' ? currentScore : (game.hersScore || 0),
+                        points: currentScore,
+                        completedAt: serverTimestamp()
+                    });
 
-                alert(`🎉 Correct! ${game.wager ? `\n\n💝 You won the wager: ${game.wager}` : ''}`);
+                    await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
+                    setCurrentGameId(null);
+
+                    alert(`🏆 ${playerName} WINS! Final score: ${currentScore} - ${role === 'his' ? (game.hersScore || 0) : (game.hisScore || 0)}${game.wager ? `\n\n💝 Winner's reward: ${game.wager}` : ''}`);
+                } else {
+                    // Correct but game continues - generate new word
+                    const words = new Set(['LOVE', 'KISS', 'HUG', 'HOME', 'TRUST', 'FOREVER', 'HEART', 'SMILE', 'DREAM', 'HAPPY']);
+                    if (husbandName) words.add(husbandName.toUpperCase());
+                    if (wifeName) words.add(wifeName.toUpperCase());
+                    const personalWords = Array.from(words).filter(w => w.length >= 3 && w !== game.word);
+                    const newWord = personalWords[Math.floor(Math.random() * personalWords.length)];
+                    const newScrambled = scrambleWord(newWord);
+
+                    await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
+                        word: newWord,
+                        scrambled: newScrambled,
+                        [scoreKey]: currentScore,
+                        currentTurn: role // Correct guesser goes again
+                    });
+
+                    setGameAnswer('');
+                    alert(`✅ Correct! +1 point\n\n📊 Score: ${role === 'his' ? currentScore : (game.hisScore || 0)} - ${role === 'hers' ? currentScore : (game.hersScore || 0)}\n\n🎯 First to ${targetScore} wins!`);
+                }
             } catch (err) {
                 console.error('Submit answer error:', err);
             }
@@ -1143,6 +1183,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 console.error('Update turn error:', err);
             }
 
+            setGameAnswer('');
             alert(`❌ Wrong guess! It's now ${nextPlayerName}'s turn.`);
         }
     };
@@ -3292,7 +3333,7 @@ Generated by Unity Bridge - Relationship OS`;
                                     {/* Mood Selector */}
                                     <div className="space-y-2">
                                         <p className="text-[10px] font-bold text-purple-500 uppercase">How are you feeling?</p>
-                                        <div className="flex justify-around">
+                                        <div className="flex flex-wrap gap-2 justify-center">
                                             {['😊', '😢', '😠', '😰', '😴', '🤗', '🤔', '🎉'].map(emoji => (
                                                 <button
                                                     key={emoji}
