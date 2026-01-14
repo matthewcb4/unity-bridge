@@ -205,6 +205,12 @@ const App = () => {
     const [showParentPinModal, setShowParentPinModal] = useState(false);
     const [pendingParentRole, setPendingParentRole] = useState(null); // 'his' or 'hers' - which parent is trying to log in
 
+    // Family Games Hub
+    const [familyActiveGames, setFamilyActiveGames] = useState([]); // Active family games
+    const [familyGameHistory, setFamilyGameHistory] = useState([]); // Completed family games
+    const [selectedOpponent, setSelectedOpponent] = useState(null); // Selected opponent for new game
+    const [familyGameTab, setFamilyGameTab] = useState('lobby'); // 'lobby' | 'scoreboard'
+
     // Initialize PWA and Viewport
     useEffect(() => {
         const setAppHeight = () => {
@@ -305,10 +311,24 @@ const App = () => {
             setKidProfiles(kids.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
         }, (err) => console.error("Kids Sync Error:", err));
 
+        // Listen for family games (Family Games Hub)
+        const familyGamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
+        const unsubFamilyGames = onSnapshot(familyGamesRef, (snap) => {
+            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setFamilyActiveGames(games.filter(g => g.phase !== 'completed').sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+        }, (err) => console.error("Family Games Sync Error:", err));
+
+        // Listen for family game history
+        const familyHistoryRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
+        const unsubFamilyHistory = onSnapshot(familyHistoryRef, (snap) => {
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setFamilyGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
+        }, (err) => console.error("Family History Error:", err));
+
         // Initial content load
         refreshVaults();
 
-        return () => { unsubBridge(); unsubJournal(); unsubSettings(); unsubGames(); unsubHistory(); unsubKids(); };
+        return () => { unsubBridge(); unsubJournal(); unsubSettings(); unsubGames(); unsubHistory(); unsubKids(); unsubFamilyGames(); unsubFamilyHistory(); };
     }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
@@ -1439,6 +1459,88 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             console.error('Attack error:', err);
             alert('Failed to attack.');
         }
+    };
+
+    // FAMILY GAMES HUB - Create game between any family members
+    const createFamilyGame = async (opponent, gameType, wager = '') => {
+        if (!coupleCode || !db) return;
+
+        // Determine current player identity
+        const currentPlayerId = currentKid ? currentKid.id : role;
+        const currentPlayerName = currentKid ? currentKid.name : (role === 'his' ? husbandName : wifeName);
+        const currentPlayerAvatar = currentKid ? (currentKid.avatar || '🧒') : (role === 'his' ? '👨' : '👩');
+
+        try {
+            const gamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
+
+            let gameData = {
+                type: gameType,
+                wager: wager,
+                createdBy: currentPlayerId,
+                creatorName: currentPlayerName,
+                creatorAvatar: currentPlayerAvatar,
+                opponentId: opponent.id,
+                opponentName: opponent.name,
+                opponentAvatar: opponent.avatar || (opponent.id === 'his' ? '👨' : opponent.id === 'hers' ? '👩' : '🧒'),
+                createdAt: serverTimestamp(),
+                currentTurn: currentPlayerId,
+                phase: 'active'
+            };
+
+            // Game-specific setup
+            if (gameType === 'word_scramble') {
+                // Generate a simple word puzzle
+                const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'FRIENDS', 'AWESOME', 'SUPER', 'WINNER', 'CHAMPION'];
+                const word = words[Math.floor(Math.random() * words.length)];
+                const scrambled = word.split('').sort(() => Math.random() - 0.5).join('');
+                gameData.word = word;
+                gameData.scrambled = scrambled;
+                gameData.hint = `${word.length} letters`;
+            } else if (gameType === 'letter_link') {
+                const board = Array(121).fill(null);
+                let bag = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ'.split('');
+                bag = bag.sort(() => Math.random() - 0.5);
+                const creatorHand = bag.splice(0, 7);
+                const opponentHand = bag.splice(0, 7);
+                gameData.board = JSON.stringify(board);
+                gameData.bag = bag;
+                gameData.players = {
+                    [currentPlayerId]: { hand: creatorHand, score: 0 },
+                    [opponent.id]: { hand: opponentHand, score: 0 }
+                };
+                gameData.history = [];
+            } else if (gameType === 'battleship') {
+                gameData.phase = 'placing';
+                gameData.players = {
+                    [currentPlayerId]: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 },
+                    [opponent.id]: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 }
+                };
+                gameData.winner = null;
+            }
+
+            await addDoc(gamesRef, gameData);
+            alert(`Game started with ${opponent.name}! Good luck! 🎮`);
+            setSelectedOpponent(null);
+            setView('family_games');
+        } catch (err) {
+            console.error('Create Family Game error:', err);
+            alert('Failed to start game.');
+        }
+    };
+
+    // Get all family members for opponent selection
+    const getFamilyMembers = () => {
+        const members = [];
+        // Add parents
+        if (husbandName) members.push({ id: 'his', name: husbandName || 'Dad', avatar: '👨' });
+        if (wifeName) members.push({ id: 'hers', name: wifeName || 'Mom', avatar: '👩' });
+        // Add kids
+        kidProfiles.forEach(kid => {
+            members.push({ id: kid.id, name: kid.name, avatar: kid.avatar || '🧒' });
+        });
+        // Filter out current player
+        const currentId = currentKid ? currentKid.id : role;
+        return members.filter(m => m.id !== currentId);
     };
 
     const clearBridgeView = () => {
@@ -3688,12 +3790,13 @@ Generated by Unity Bridge - Relationship OS`;
                             <div className={`flex p-1.5 rounded-2xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
                                 {[
                                     { id: 'journal', label: '📔 Journal' },
+                                    { id: 'games', label: '🎮 Games' },
                                     { id: 'bridge', label: '💬 Parents' },
                                     { id: 'me', label: '⭐ Me' }
                                 ].map(tab => (
                                     <button
                                         key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
+                                        onClick={() => tab.id === 'games' ? setView('family_games') : setActiveTab(tab.id)}
                                         className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${activeTab === tab.id ? 'bg-purple-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
                                     >
                                         {tab.label}
@@ -3939,7 +4042,17 @@ Generated by Unity Bridge - Relationship OS`;
                             </div>
 
                             {/* Quick Actions */}
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-3 gap-3">
+                                <button
+                                    onClick={() => setView('family_games')}
+                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 relative ${darkMode ? 'bg-purple-900/50 border-purple-700' : 'bg-purple-50 border-purple-200'}`}
+                                >
+                                    <span className="text-2xl">🎮</span>
+                                    <span className={`text-xs font-bold ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>Family Games</span>
+                                    {familyActiveGames.length > 0 && (
+                                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{familyActiveGames.length}</span>
+                                    )}
+                                </button>
                                 <button
                                     onClick={() => setShowKidManager(true)}
                                     className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
@@ -3963,6 +4076,147 @@ Generated by Unity Bridge - Relationship OS`;
                             >
                                 👋 Switch User
                             </button>
+                        </div>
+                    )}
+
+                    {/* FAMILY GAMES HUB VIEW */}
+                    {view === 'family_games' && (
+                        <div className="p-3 space-y-3 animate-in slide-in-from-bottom-4">
+                            {/* Header */}
+                            <div className="text-center space-y-1 pt-1">
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-purple-900 border-purple-700' : 'bg-purple-100 border-white'}`}>
+                                    <Gamepad2 className="w-7 h-7 text-purple-600" />
+                                </div>
+                                <h2 className={`text-xl font-black tracking-tighter ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Family Games</h2>
+                                <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Challenge anyone in your family!</p>
+                            </div>
+
+                            {/* Tab Switcher */}
+                            <div className="flex gap-2">
+                                <button onClick={() => setFamilyGameTab('lobby')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${familyGameTab === 'lobby' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🎮 Lobby</button>
+                                <button onClick={() => setFamilyGameTab('scoreboard')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${familyGameTab === 'scoreboard' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🏆 Scoreboard</button>
+                            </div>
+
+                            {familyGameTab === 'lobby' && (
+                                <>
+                                    {/* Active Games */}
+                                    {familyActiveGames.length > 0 && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black text-slate-400 uppercase">Active Games</p>
+                                            {familyActiveGames.map(game => {
+                                                const currentPlayerId = currentKid ? currentKid.id : role;
+                                                const isMyTurn = game.currentTurn === currentPlayerId;
+                                                const isMyGame = game.createdBy === currentPlayerId || game.opponentId === currentPlayerId;
+                                                if (!isMyGame) return null;
+                                                return (
+                                                    <div key={game.id} className={`p-3 rounded-xl border ${isMyTurn ? 'bg-purple-50 border-purple-200' : 'bg-slate-50 border-slate-200'}`}>
+                                                        <div className="flex justify-between items-center mb-1">
+                                                            <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? '🔤 Word Scramble' : game.type === 'letter_link' ? '🧩 Letter Link' : '⚓ Battleship'}</span>
+                                                            {isMyTurn && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-xl">{game.creatorAvatar}</span>
+                                                            <span className="text-xs font-bold text-slate-400">vs</span>
+                                                            <span className="text-xl">{game.opponentAvatar}</span>
+                                                            <span className="flex-1 text-xs text-slate-600">{game.creatorName} vs {game.opponentName}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
+                                    {/* Start New Game */}
+                                    <div className={`rounded-2xl shadow-lg border p-4 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
+                                        <p className="text-sm font-black text-purple-600 uppercase text-center">🆕 Challenge Someone!</p>
+
+                                        {/* Opponent Selection */}
+                                        <div className="space-y-2">
+                                            <p className="text-[9px] font-black text-slate-400 uppercase">Choose Opponent:</p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {getFamilyMembers().map(member => (
+                                                    <button
+                                                        key={member.id}
+                                                        onClick={() => setSelectedOpponent(member)}
+                                                        className={`p-2 rounded-xl border flex flex-col items-center gap-1 min-w-[60px] transition-all ${selectedOpponent?.id === member.id
+                                                            ? 'bg-purple-100 border-purple-400 ring-2 ring-purple-300'
+                                                            : 'bg-slate-50 border-slate-200 hover:bg-purple-50'
+                                                            }`}
+                                                    >
+                                                        <span className="text-2xl">{member.avatar}</span>
+                                                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[50px]">{member.name}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {getFamilyMembers().length === 0 && (
+                                                <p className="text-xs text-slate-400 text-center py-2">Add family members first!</p>
+                                            )}
+                                        </div>
+
+                                        {/* Game Type Selection */}
+                                        {selectedOpponent && (
+                                            <div className="space-y-2 pt-2 border-t border-slate-100">
+                                                <p className="text-[9px] font-black text-slate-400 uppercase">Select Game vs {selectedOpponent.name}:</p>
+                                                <div className="grid grid-cols-3 gap-2">
+                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'word_scramble')} className="p-3 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
+                                                        <span className="text-xl">🔤</span>
+                                                        <span className="text-[9px] font-bold text-purple-600">Word</span>
+                                                    </button>
+                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'letter_link')} className="p-3 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
+                                                        <span className="text-xl">🧩</span>
+                                                        <span className="text-[9px] font-bold text-blue-600">Letter Link</span>
+                                                    </button>
+                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'battleship')} className="p-3 bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
+                                                        <span className="text-xl">⚓</span>
+                                                        <span className="text-[9px] font-bold text-cyan-600">Battleship</span>
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Back Button */}
+                                    <button onClick={() => setView(currentKid ? 'kid_hub' : 'parent_hub')} className="w-full py-3 text-xs font-bold text-slate-400">
+                                        ← Back to {currentKid ? 'My Hub' : 'Dashboard'}
+                                    </button>
+                                </>
+                            )}
+
+                            {familyGameTab === 'scoreboard' && (
+                                <div className={`rounded-2xl shadow-lg border p-4 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
+                                    <p className="text-sm font-black text-center text-purple-600">🏆 Family Leaderboard</p>
+                                    {(() => {
+                                        // Calculate wins per family member
+                                        const winCounts = {};
+                                        familyGameHistory.forEach(game => {
+                                            const winnerId = game.winnerId || game.solvedBy;
+                                            const winnerName = game.winnerName || game.solverName;
+                                            if (winnerId) {
+                                                if (!winCounts[winnerId]) winCounts[winnerId] = { name: winnerName, wins: 0 };
+                                                winCounts[winnerId].wins++;
+                                            }
+                                        });
+                                        const sorted = Object.entries(winCounts).sort((a, b) => b[1].wins - a[1].wins);
+
+                                        if (sorted.length === 0) {
+                                            return <p className="text-center text-slate-400 text-xs py-4">No games completed yet. Start playing!</p>;
+                                        }
+
+                                        return (
+                                            <div className="space-y-2">
+                                                {sorted.map(([id, data], i) => (
+                                                    <div key={id} className={`flex items-center gap-3 p-3 rounded-xl ${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
+                                                        <span className="text-xl">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</span>
+                                                        <span className="flex-1 font-bold text-sm text-slate-700">{data.name}</span>
+                                                        <span className="text-lg font-black text-purple-600">{data.wins}</span>
+                                                        <span className="text-[10px] text-slate-400">wins</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                            )}
                         </div>
                     )}
 
