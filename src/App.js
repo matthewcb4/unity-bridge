@@ -98,7 +98,13 @@ const App = () => {
     // Auto-redirect to hub if user previously selected a role and has couple code
     const savedRole = localStorage.getItem('user_role');
     const savedCode = localStorage.getItem('couple_code');
-    const [view, setView] = useState(savedRole && savedCode ? 'hub' : 'home');
+    const [view, setViewState] = useState(localStorage.getItem('unity_bridge_view') || (savedRole && savedCode ? 'hub' : 'home'));
+
+    const setView = (newView) => {
+        setViewState(newView);
+        localStorage.setItem('unity_bridge_view', newView);
+    };
+
     const [role, setRole] = useState(savedRole || null);
     const [activeTab, setActiveTab] = useState('affection');
     const [affectionType, setAffectionType] = useState('primary');
@@ -196,9 +202,11 @@ const App = () => {
     const [kidProfiles, setKidProfiles] = useState([]); // Array of kid profiles
     const [currentKid, setCurrentKid] = useState(null); // Currently logged in kid
     const [kidPinInput, setKidPinInput] = useState('');
+    const [journalPrivacy, setJournalPrivacy] = useState(true); // Privacy mode for Kid Journal (Parent View)
     const [showKidManager, setShowKidManager] = useState(false);
-    const [kidJournalItems, setKidJournalItems] = useState([]);
-    const [kidBridgeItems, setKidBridgeItems] = useState([]);
+    const [kidJournalItems, setKidJournalItems] = useState({ mood: null });
+    const [kidBridgeMessages, setKidBridgeMessages] = useState([]);
+    const [kidJournalEntries, setKidJournalEntries] = useState([]); // NEW: State for kid journal history
 
     // Parent PIN Authentication
     const [parentPinInput, setParentPinInput] = useState('');
@@ -800,6 +808,40 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
 
 
+
+    // Kid Bridge Listener & Journal Listener
+    useEffect(() => {
+        if (!currentKid || !coupleCode) return;
+
+        // Bridge Messages
+        const qBridge = query(
+            collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items'),
+            orderBy('timestamp', 'asc'),
+            limit(50)
+        );
+
+        // Journal Entries (New)
+        const qJournal = query(
+            collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal'),
+            orderBy('timestamp', 'desc'),
+            limit(20)
+        );
+
+        const unsubBridge = onSnapshot(qBridge, (snapshot) => {
+            const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setKidBridgeMessages(msgs);
+        });
+
+        const unsubJournal = onSnapshot(qJournal, (snapshot) => {
+            const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setKidJournalEntries(entries);
+        });
+
+        return () => {
+            unsubBridge();
+            unsubJournal();
+        };
+    }, [currentKid, coupleCode]);
 
     const scrambleWord = (word) => {
         if (word.length < 3) return word;
@@ -1671,109 +1713,98 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         <div className="flex flex-col items-center px-4 space-y-4 py-4">
             {/* Compact Header */}
             <div className="text-center space-y-1">
-                <div className="bg-rose-100 p-4 rounded-full inline-block border-2 border-white shadow-lg">
+                <div className="bg-gradient-to-br from-rose-100 to-purple-100 p-4 rounded-full inline-block border-2 border-white shadow-lg">
                     <Heart className="w-8 h-8 text-rose-600 fill-rose-600" />
                 </div>
-                <h1 className="text-2xl font-black text-slate-800 tracking-tighter italic">
-                    {portalMode === 'family' ? 'Family Bridge' : 'Unity Bridge'}
+                <h1 className="text-3xl font-black text-slate-800 tracking-tighter italic">
+                    Unity Bridge
                 </h1>
                 <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest">
-                    {portalMode === 'family' ? 'Family Connection' : 'Relationship OS'}
+                    Family Connection OS
                 </p>
             </div>
 
-            {/* Portal Selector */}
-            <div className={`w-full flex p-1 rounded-2xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                <button
-                    onClick={() => { setPortalMode('couple'); localStorage.setItem('portal_mode', 'couple'); }}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1
-                        ${portalMode === 'couple' ? 'bg-rose-600 text-white shadow-md' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
-                >
-                    💑 Couple
-                </button>
-                <button
-                    onClick={() => { setPortalMode('family'); localStorage.setItem('portal_mode', 'family'); }}
-                    className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1
-                        ${portalMode === 'family' ? 'bg-purple-600 text-white shadow-md' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
-                >
-                    👨‍👩‍👧‍👦 Family
-                </button>
+            {/* Unified Family Code Entry */}
+            <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                <div className="space-y-1.5">
+                    <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
+                        <Lock className="w-3 h-3" /> Family Code
+                    </label>
+                    <input
+                        value={coupleCode}
+                        onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
+                        placeholder="e.g. smith"
+                        className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
+                    />
+                    <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Enter your family access code</p>
+                </div>
             </div>
 
-            {/* COUPLE PORTAL MODE */}
-            {portalMode === 'couple' && (
-                <>
-                    {/* Settings Card - Compact */}
-                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                        {/* Names Row */}
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-blue-500 uppercase ml-1">👤 Husband</label>
-                                <input
-                                    value={husbandName}
-                                    onChange={(e) => { setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); saveSettings({ husbandName: e.target.value }); }}
-                                    placeholder="Name"
-                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-blue-300'}`}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-rose-500 uppercase ml-1">👤 Wife</label>
-                                <input
-                                    value={wifeName}
-                                    onChange={(e) => { setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); saveSettings({ wifeName: e.target.value }); }}
-                                    placeholder="Name"
-                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200 focus:border-rose-300'}`}
-                                />
-                            </div>
-                        </div>
+            {/* Who's Using the App? */}
+            <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                <p className={`text-xs font-black text-center ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Who's using the app?</p>
 
-                        {/* Couple Code */}
-                        <div className="space-y-1.5">
-                            <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
-                                <Lock className="w-3 h-3" /> Couple Code
-                            </label>
-                            <input
-                                value={coupleCode}
-                                onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
-                                placeholder="e.g. smith2024"
-                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
-                            />
-                            <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Same code on all devices to sync</p>
-                        </div>
+                {/* Parent Buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                    <button
+                        onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
+                        disabled={!coupleCode}
+                        className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
+                    >
+                        <span className="text-2xl">👨</span>
+                        <input
+                            value={husbandName}
+                            onChange={(e) => { e.stopPropagation(); setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); }}
+                            placeholder="Dad's Name"
+                            className="bg-transparent text-[10px] font-bold text-blue-600 text-center w-full outline-none placeholder:text-blue-300"
+                        />
+                    </button>
+                    <button
+                        onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
+                        disabled={!coupleCode}
+                        className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
+                    >
+                        <span className="text-2xl">👩</span>
+                        <input
+                            value={wifeName}
+                            onChange={(e) => { e.stopPropagation(); setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); }}
+                            placeholder="Mom's Name"
+                            className="bg-transparent text-[10px] font-bold text-rose-600 text-center w-full outline-none placeholder:text-rose-300"
+                        />
+                    </button>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center gap-2">
+                    <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
+                    <span className="text-[9px] text-slate-400 font-bold">KIDS</span>
+                    <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
+                </div>
+
+                {/* Kid Profiles */}
+                {kidProfiles.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                        {kidProfiles.map((kid, i) => (
+                            <button
+                                key={kid.id || i}
+                                onClick={() => { setCurrentKid(kid); setKidPinInput(''); }}
+                                disabled={!coupleCode}
+                                className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}
+                            >
+                                <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                <span className="text-[10px] font-bold text-purple-600">{kid.name}</span>
+                            </button>
+                        ))}
                     </div>
-
-                    {/* Hub Buttons - Compact */}
-                    <div className="grid grid-cols-2 w-full gap-3">
-                        <button
-                            onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
-                            className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
-                        >
-                            <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center">
-                                <User className="w-6 h-6" />
-                            </div>
-                            <div className="text-center">
-                                <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Husband</h3>
-                                <p className="text-[8px] text-blue-500 font-bold uppercase">Enter Hub</p>
-                            </div>
-                        </button>
-                        <button
-                            onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
-                            className={`p-4 border rounded-2xl shadow-lg flex flex-col items-center gap-2 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}
-                        >
-                            <div className="w-12 h-12 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center">
-                                <User className="w-6 h-6" />
-                            </div>
-                            <div className="text-center">
-                                <h3 className={`text-sm font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Wife</h3>
-                                <p className="text-[8px] text-rose-500 font-bold uppercase">Enter Hub</p>
-                            </div>
-                        </button>
+                ) : (
+                    <div className="text-center py-4">
+                        <p className="text-[10px] text-slate-400 mb-2">No kid profiles yet</p>
+                        <p className="text-[9px] text-slate-400">Login as Mom or Dad to add kids</p>
                     </div>
-                    {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter couple code to unlock</p>}
-                </>
-            )}
+                )}
+            </div>
 
-            {/* Parent PIN Modal - Global (works for both couple and family modes) */}
+            {/* Parent PIN Modal */}
             {showParentPinModal && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
                     <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
@@ -1783,7 +1814,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 {pendingParentRole === 'his' ? (husbandName || 'Husband') : (wifeName || 'Wife')}
                             </h3>
                             <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
-                            <p className="text-[10px] text-slate-400 mt-1">(First time? Use 0000 to set up)</p>
+                            <p className="text-[10px] text-slate-400 mt-1">(Default: 0000)</p>
                         </div>
 
                         <input
@@ -1802,12 +1833,9 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                         setShowParentPinModal(false);
                                         setParentPinInput('');
                                         setPendingParentRole(null);
-                                        if (portalMode === 'family') {
-                                            setView('parent_hub');
-                                        } else {
-                                            setView('hub');
-                                            setAffectionType('primary');
-                                        }
+                                        // UNIFIED ROUTING: Always go to parent_hub (Dashboard)
+                                        // Parents can navigate to HUB (Couples) from there
+                                        setView('parent_hub');
                                     } else {
                                         alert('Wrong PIN! Try again.');
                                         setParentPinInput('');
@@ -1831,130 +1859,54 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 </div>
             )}
 
-            {/* FAMILY PORTAL MODE */}
-            {portalMode === 'family' && (
-                <>
-                    {/* Family Code */}
-                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                        <div className="space-y-1.5">
-                            <label className={`text-[9px] font-black uppercase ml-1 flex items-center gap-1 ${darkMode ? 'text-purple-400' : 'text-purple-500'}`}>
-                                <Lock className="w-3 h-3" /> Family Code
-                            </label>
-                            <input
-                                value={coupleCode}
-                                onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
-                                placeholder="e.g. smith"
-                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
-                            />
-                            <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Your family's shared code</p>
+            {/* Kid PIN Modal */}
+            {currentKid && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                        <div className="text-center">
+                            <span className="text-5xl">{currentKid.avatar || '🧒'}</span>
+                            <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Hi, {currentKid.name}!</h3>
+                            <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
+                        </div>
+
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            value={kidPinInput}
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/\D/g, '').slice(0, 4);
+                                setKidPinInput(val);
+                                if (val.length === 4) {
+                                    if (val === currentKid.pin) {
+                                        setPortalMode('kid'); // Still useful state tracking
+                                        localStorage.setItem('portal_mode', 'kid');
+                                        localStorage.setItem('current_kid_id', currentKid.id);
+                                        setView('kid_hub');
+                                    } else {
+                                        alert('Wrong PIN! Try again.');
+                                        setKidPinInput('');
+                                    }
+                                }
+                            }}
+                            className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                            placeholder="••••"
+                            autoFocus
+                        />
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => { setCurrentKid(null); setKidPinInput(''); }}
+                                className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                            >
+                                Cancel
+                            </button>
                         </div>
                     </div>
-
-                    {/* Who's Using the App? */}
-                    <div className={`w-full p-4 rounded-2xl shadow-lg border space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                        <p className={`text-xs font-black text-center ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Who's using the app?</p>
-
-                        {/* Parent Buttons */}
-                        <div className="grid grid-cols-2 gap-2">
-                            <button
-                                onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
-                                disabled={!coupleCode}
-                                className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
-                            >
-                                <span className="text-2xl">👨</span>
-                                <span className="text-[10px] font-bold text-blue-600">{husbandName || 'Dad'}</span>
-                            </button>
-                            <button
-                                onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
-                                disabled={!coupleCode}
-                                className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
-                            >
-                                <span className="text-2xl">👩</span>
-                                <span className="text-[10px] font-bold text-rose-600">{wifeName || 'Mom'}</span>
-                            </button>
-                        </div>
-
-                        {/* Divider */}
-                        <div className="flex items-center gap-2">
-                            <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
-                            <span className="text-[9px] text-slate-400 font-bold">KIDS</span>
-                            <div className={`flex-1 h-px ${darkMode ? 'bg-slate-600' : 'bg-slate-200'}`}></div>
-                        </div>
-
-                        {/* Kid Profiles */}
-                        {kidProfiles.length > 0 ? (
-                            <div className="grid grid-cols-3 gap-2">
-                                {kidProfiles.map((kid, i) => (
-                                    <button
-                                        key={kid.id || i}
-                                        onClick={() => { setCurrentKid(kid); setKidPinInput(''); }}
-                                        disabled={!coupleCode}
-                                        className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}
-                                    >
-                                        <span className="text-2xl">{kid.avatar || '🧒'}</span>
-                                        <span className="text-[10px] font-bold text-purple-600">{kid.name}</span>
-                                    </button>
-                                ))}
-                            </div>
-                        ) : (
-                            <div className="text-center py-4">
-                                <p className="text-[10px] text-slate-400 mb-2">No kid profiles yet</p>
-                                <p className="text-[9px] text-slate-400">Parents: Enter as Mom or Dad to add kids</p>
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Kid PIN Modal */}
-                    {currentKid && (
-                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                            <div className={`w-full max-w-xs p-6 rounded-3xl shadow-2xl space-y-4 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                                <div className="text-center">
-                                    <span className="text-5xl">{currentKid.avatar || '🧒'}</span>
-                                    <h3 className={`text-lg font-black mt-2 ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Hi, {currentKid.name}!</h3>
-                                    <p className="text-xs text-slate-400">Enter your 4-digit PIN</p>
-                                </div>
-
-                                <input
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={4}
-                                    value={kidPinInput}
-                                    onChange={(e) => {
-                                        const val = e.target.value.replace(/\D/g, '').slice(0, 4);
-                                        setKidPinInput(val);
-                                        // Auto-submit on 4 digits
-                                        if (val.length === 4) {
-                                            if (val === currentKid.pin) {
-                                                setPortalMode('kid');
-                                                localStorage.setItem('portal_mode', 'kid');
-                                                localStorage.setItem('current_kid_id', currentKid.id);
-                                                setView('kid_hub');
-                                            } else {
-                                                alert('Wrong PIN! Try again.');
-                                                setKidPinInput('');
-                                            }
-                                        }
-                                    }}
-                                    className={`w-full p-4 text-center text-2xl font-mono tracking-[0.5em] rounded-xl border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
-                                    placeholder="••••"
-                                    autoFocus
-                                />
-
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => { setCurrentKid(null); setKidPinInput(''); }}
-                                        className="flex-1 py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
-                                    >
-                                        Cancel
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter family code to unlock</p>}
-                </>
+                </div>
             )}
+
+            {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter Family Code to start</p>}
         </div>
     );
 
@@ -3863,7 +3815,7 @@ Generated by Unity Bridge - Relationship OS`;
                                         </div>
                                     </div>
 
-                                    {/* Journal Entry */}
+                                    {/* Journal Entry Input */}
                                     <textarea
                                         value={inputText}
                                         onChange={(e) => setInputText(e.target.value)}
@@ -3895,6 +3847,116 @@ Generated by Unity Bridge - Relationship OS`;
                                     >
                                         ✏️ Save Journal Entry
                                     </button>
+
+                                    {/* NEW: Journal History */}
+                                    <div className="space-y-3 pt-4 border-t border-slate-100">
+                                        <div className="flex justify-between items-center">
+                                            <h4 className={`text-xs font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>
+                                                {role === 'his' || role === 'hers' ? '🔒 Kid Journal' : 'Your Past Entries'}
+                                            </h4>
+                                            {(role === 'his' || role === 'hers') && (
+                                                <button
+                                                    onClick={() => setJournalPrivacy(!journalPrivacy)}
+                                                    className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg"
+                                                >
+                                                    {journalPrivacy ? '👁️ Reveal All' : '🔒 Hide Content'}
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        {kidJournalEntries.length === 0 ? (
+                                            <p className="text-xs text-slate-400 italic text-center">No entries yet. Start writing!</p>
+                                        ) : (
+                                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
+                                                {kidJournalEntries.map(entry => {
+                                                    const isParent = role === 'his' || role === 'hers';
+                                                    const isBlurred = isParent && journalPrivacy;
+
+                                                    return (
+                                                        <div key={entry.id} className={`relative p-4 rounded-2xl border transition-all ${darkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
+                                                            {/* Header */}
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <span className="text-xl">{entry.mood || '😊'}</span>
+                                                                <div className="text-right">
+                                                                    <span className="text-[10px] text-slate-400 font-bold uppercase block">
+                                                                        {entry.timestamp ? new Date(entry.timestamp.seconds * 1000).toLocaleDateString() : 'Just now'}
+                                                                    </span>
+                                                                    {/* Read Receipt (Visible to everyone) */}
+                                                                    {entry.readByParent && (
+                                                                        <span className="text-[9px] font-bold text-green-500 flex items-center justify-end gap-0.5">
+                                                                            <Check className="w-3 h-3" /> Read by Parent
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Content with Blur */}
+                                                            <div className={`relative ${isBlurred ? 'blur-sm select-none' : ''}`}>
+                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{entry.content}</p>
+                                                            </div>
+
+                                                            {/* Protected Overlay */}
+                                                            {isBlurred && (
+                                                                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/10 backdrop-blur-[1px]">
+                                                                    <button
+                                                                        onClick={() => setJournalPrivacy(false)}
+                                                                        className="px-3 py-1.5 bg-slate-800 text-white text-[10px] font-bold rounded-full shadow-lg"
+                                                                    >
+                                                                        🔒 Private • Tap to Reveal
+                                                                    </button>
+                                                                </div>
+                                                            )}
+
+                                                            {/* Actions */}
+                                                            <div className="flex justify-end gap-2 mt-2">
+                                                                {/* Parent: Mark as Read */}
+                                                                {isParent && !entry.readByParent && !isBlurred && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            try {
+                                                                                const entryRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal', entry.id);
+                                                                                await updateDoc(entryRef, { readByParent: true });
+                                                                            } catch (err) { console.error(err); }
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full hover:bg-green-200"
+                                                                    >
+                                                                        ✓ Mark as Read
+                                                                    </button>
+                                                                )}
+
+                                                                {/* Kid: Share Button (Existing) */}
+                                                                {!isParent && (
+                                                                    <button
+                                                                        onClick={async () => {
+                                                                            if (window.confirm('Share this entry with Mom & Dad?')) {
+                                                                                try {
+                                                                                    const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
+                                                                                    await addDoc(bridgeRef, {
+                                                                                        content: `[Shared Journal Entry] ${entry.content}`,
+                                                                                        from: currentKid.name,
+                                                                                        authorId: currentKid.id,
+                                                                                        timestamp: serverTimestamp(),
+                                                                                        readByParent: false
+                                                                                    });
+                                                                                    alert('Shared to Parents! 📤');
+                                                                                } catch (err) {
+                                                                                    console.error(err);
+                                                                                    alert('Failed to share.');
+                                                                                }
+                                                                            }
+                                                                        }}
+                                                                        className="px-3 py-1.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full hover:bg-green-200"
+                                                                    >
+                                                                        Share with Parents 📤
+                                                                    </button>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             )}
 
@@ -3921,6 +3983,7 @@ Generated by Unity Bridge - Relationship OS`;
                                                         await addDoc(bridgeRef, {
                                                             content: `${msg.emoji} ${msg.text}`,
                                                             from: currentKid.name,
+                                                            authorId: currentKid.id,
                                                             timestamp: serverTimestamp(),
                                                             readByParent: false
                                                         });
@@ -3937,63 +4000,161 @@ Generated by Unity Bridge - Relationship OS`;
                                         ))}
                                     </div>
 
-                                    {/* Custom Message */}
-                                    <div className="space-y-2 pt-4 border-t border-slate-200">
+                                    {/* Custom Message (Moved UP) */}
+                                    <div className="space-y-2 pt-2 border-t border-slate-200">
                                         <p className="text-[10px] font-bold text-purple-500 uppercase">Or write your own</p>
-                                        <textarea
-                                            value={inputText}
-                                            onChange={(e) => setInputText(e.target.value)}
-                                            placeholder="Write a message to your parents..."
-                                            className={`w-full h-20 p-3 rounded-xl border resize-none text-sm outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
-                                        />
-                                        <button
-                                            onClick={async () => {
-                                                if (!inputText.trim()) return;
-                                                try {
-                                                    const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
-                                                    await addDoc(bridgeRef, {
-                                                        content: inputText,
-                                                        from: currentKid.name,
-                                                        timestamp: serverTimestamp(),
-                                                        readByParent: false
-                                                    });
-                                                    setInputText('');
-                                                    alert('Message sent! 💕');
-                                                } catch (err) {
-                                                    console.error('Kid bridge error:', err);
-                                                }
-                                            }}
-                                            className="w-full py-3 bg-purple-600 text-white font-bold rounded-xl text-sm"
-                                        >
-                                            💬 Send Message
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <textarea
+                                                value={inputText}
+                                                onChange={(e) => setInputText(e.target.value)}
+                                                placeholder="Write a message..."
+                                                className={`flex-1 h-12 p-3 rounded-xl border resize-none text-sm outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                                            />
+                                            <button
+                                                onClick={async () => {
+                                                    if (!inputText.trim()) return;
+                                                    try {
+                                                        const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
+                                                        await addDoc(bridgeRef, {
+                                                            content: inputText,
+                                                            from: currentKid.name,
+                                                            authorId: currentKid.id,
+                                                            timestamp: serverTimestamp(),
+                                                            readByParent: false
+                                                        });
+                                                        setInputText('');
+                                                        // alert('Message sent! 💕'); // Removed alert to keep flow smooth like a chat
+                                                    } catch (err) {
+                                                        console.error('Kid bridge error:', err);
+                                                    }
+                                                }}
+                                                className="w-12 bg-purple-600 text-white font-bold rounded-xl flex items-center justify-center text-xl"
+                                            >
+                                                ➤
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {/* Messages History (Moved DOWN) */}
+                                    <div className="space-y-3 max-h-[300px] overflow-y-auto p-2 bg-slate-50/50 rounded-xl border border-slate-100/50 flex flex-col-reverse">
+                                        {/* Reversed logic: Data is chronological (old->new). We displayed them top-down. 
+                                            If we want "chat style" usually input is at bottom. 
+                                            BUT User requested: "move the conversation history... below the new message feature".
+                                            So Input is TOP, History is BOTTOM.
+                                            Let's keep standard list rendering.
+                                        */}
+                                        {kidBridgeMessages.length === 0 ? (
+                                            <p className="text-xs text-center text-slate-400 py-4 italic">No messages yet. Say hi! 👋</p>
+                                        ) : (
+                                            kidBridgeMessages.map(msg => {
+                                                const isFromKid = msg.authorId === currentKid.id || msg.from === currentKid.name;
+                                                return (
+                                                    <div key={msg.id} className={`flex ${isFromKid ? 'justify-end' : 'justify-start'}`}>
+                                                        <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-bold ${isFromKid
+                                                            ? (darkMode ? 'bg-purple-600 text-white rounded-tr-none' : 'bg-purple-100 text-purple-900 rounded-tr-none')
+                                                            : (darkMode ? 'bg-slate-700 text-slate-200 rounded-tl-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none')
+                                                            }`}>
+                                                            {!isFromKid && <p className="text-[9px] font-black opacity-50 mb-1 uppercase">{msg.from}</p>}
+                                                            {msg.content}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
                                     </div>
                                 </div>
                             )}
 
                             {/* Me Tab */}
+                            {/* Me & Settings Tab */}
                             {activeTab === 'me' && (
                                 <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
                                     <div className="text-center space-y-2">
-                                        <span className="text-6xl">{currentKid.avatar || '🧒'}</span>
+                                        <span className="text-6xl animate-bounce-slow">{currentKid.avatar || '🧒'}</span>
                                         <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{currentKid.name}</h3>
                                     </div>
 
-                                    {/* Badges/Stats placeholder */}
-                                    <div className={`p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-purple-50'}`}>
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase mb-2">Coming Soon</p>
-                                        <p className={`text-sm ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>🏆 Badges and achievements will appear here!</p>
+                                    {/* Days Old Counter */}
+                                    {currentKid.birthday ? (
+                                        <div className={`p-4 rounded-2xl text-center space-y-1 ${darkMode ? 'bg-slate-700' : 'bg-gradient-to-r from-purple-100 to-pink-100'}`}>
+                                            <p className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-purple-600'}`}>I have been alive for</p>
+                                            <p className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-purple-700'}`}>
+                                                {Math.floor((new Date() - new Date(currentKid.birthday)) / (1000 * 60 * 60 * 24)).toLocaleString()}
+                                            </p>
+                                            <p className={`text-xs font-bold ${darkMode ? 'text-slate-400' : 'text-purple-600'}`}>Days! 🎂</p>
+                                        </div>
+                                    ) : (
+                                        <div className={`p-4 rounded-2xl text-center border-dashed border-2 ${darkMode ? 'border-slate-600 bg-slate-700' : 'border-purple-200 bg-purple-50'}`}>
+                                            <p className="text-xs text-slate-400 mb-2">When is your birthday?</p>
+                                            <input
+                                                type="date"
+                                                className={`p-2 rounded-xl text-sm font-bold text-center outline-none ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-purple-600 border border-purple-100'}`}
+                                                onChange={async (e) => {
+                                                    const newBirthday = e.target.value;
+                                                    try {
+                                                        const kidRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id);
+                                                        await updateDoc(kidRef, { birthday: newBirthday });
+                                                        setCurrentKid(prev => ({ ...prev, birthday: newBirthday }));
+                                                    } catch (err) {
+                                                        console.error('Error updating birthday:', err);
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Settings Section */}
+                                    <div className="space-y-2 pt-2">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Settings</p>
+
+                                        {/* Dark Mode Toggle */}
+                                        <button
+                                            onClick={() => {
+                                                const newMode = !darkMode;
+                                                setDarkMode(newMode);
+                                                localStorage.setItem('theme', newMode ? 'dark' : 'light');
+                                            }}
+                                            className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'}`}
+                                        >
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-xl">{darkMode ? '🌙' : '☀️'}</span>
+                                                <span className="text-sm font-bold">{darkMode ? 'Dark Mode' : 'Light Mode'}</span>
+                                            </div>
+                                            <div className={`w-10 h-6 rounded-full p-1 transition-colors ${darkMode ? 'bg-purple-600' : 'bg-slate-300'}`}>
+                                                <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
+                                            </div>
+                                        </button>
+
+                                        {/* Edit Birthday (if visible) */}
+                                        {currentKid.birthday && (
+                                            <button
+                                                onClick={() => {
+                                                    const newDate = prompt("Enter new birthday (YYYY-MM-DD):", currentKid.birthday);
+                                                    if (newDate) {
+                                                        // fast update
+                                                        const kidRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id);
+                                                        updateDoc(kidRef, { birthday: newDate });
+                                                        setCurrentKid(prev => ({ ...prev, birthday: newDate }));
+                                                    }
+                                                }}
+                                                className={`w-full p-4 rounded-2xl border text-left transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-300' : 'bg-white border-slate-100 text-slate-600'}`}
+                                            >
+                                                <span className="text-xs font-bold">🎂 Change Birthday</span>
+                                            </button>
+                                        )}
                                     </div>
 
                                     {/* Logout */}
                                     <button
                                         onClick={() => {
-                                            setCurrentKid(null);
-                                            setPortalMode('family');
-                                            localStorage.removeItem('current_kid_id');
-                                            setView('home');
+                                            if (window.confirm('Are you sure you want to switch users?')) {
+                                                setCurrentKid(null);
+                                                setPortalMode('family');
+                                                localStorage.removeItem('current_kid_id');
+                                                setView('home');
+                                            }
                                         }}
-                                        className={`w-full py-4 rounded-2xl text-sm font-bold ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+                                        className={`w-full py-4 rounded-2xl text-sm font-bold mt-4 ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
                                     >
                                         👋 Switch User
                                     </button>
@@ -4081,7 +4242,11 @@ Generated by Unity Bridge - Relationship OS`;
                                     <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Manage Kids</span>
                                 </button>
                                 <button
-                                    onClick={() => { setPortalMode('couple'); setView('home'); }}
+                                    onClick={() => {
+                                        setPortalMode('couple');
+                                        setView('hub');
+                                        setAffectionType('primary');
+                                    }}
                                     className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
                                 >
                                     <span className="text-2xl">💑</span>
@@ -4101,7 +4266,7 @@ Generated by Unity Bridge - Relationship OS`;
 
                     {/* FAMILY GAMES HUB VIEW */}
                     {view === 'family_games' && (
-                        <div className="p-3 space-y-3 animate-in slide-in-from-bottom-4">
+                        <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
                             {/* NEW: Parent Context Banner */}
                             {(role === 'his' || role === 'hers') && currentKid && (
                                 <div className="bg-amber-100 text-amber-900 px-4 py-2 text-xs font-bold text-center rounded-xl mb-2 flex items-center justify-center gap-2">
@@ -4137,7 +4302,6 @@ Generated by Unity Bridge - Relationship OS`;
                                                 const isMyGame = game.createdBy === currentPlayerId || game.opponentId === currentPlayerId;
                                                 if (!isMyGame) return null;
                                                 return (
-                                                return (
                                                     <div key={game.id} className="flex gap-2 items-stretch">
                                                         <button
                                                             onClick={() => { setCurrentFamilyGameId(game.id); setView('family_game_play'); }}
@@ -4159,7 +4323,7 @@ Generated by Unity Bridge - Relationship OS`;
                                                             <button
                                                                 onClick={async (e) => {
                                                                     e.stopPropagation();
-                                                                    if (confirm('Are you sure you want to cancel this game?')) {
+                                                                    if (window.confirm('Are you sure you want to cancel this game?')) {
                                                                         try {
                                                                             await deleteDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id));
                                                                         } catch (err) {
@@ -4174,7 +4338,6 @@ Generated by Unity Bridge - Relationship OS`;
                                                             </button>
                                                         )}
                                                     </div>
-                                                );
                                                 );
                                             })}
                                         </div>
@@ -4291,7 +4454,7 @@ Generated by Unity Bridge - Relationship OS`;
                         const opponentData = game.players?.[opponentId] || {};
 
                         return (
-                            <div className="p-3 space-y-3 animate-in slide-in-from-bottom-4">
+                            <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
                                 {/* Header */}
                                 <div className="text-center">
                                     <p className="text-[10px] font-black text-purple-500 uppercase">{game.type === 'word_scramble' ? '🔤 Word Scramble' : game.type === 'letter_link' ? '🧩 Letter Link' : '⚓ Battleship'}</p>
@@ -4933,13 +5096,33 @@ Generated by Unity Bridge - Relationship OS`;
                                                 onClick={() => {
                                                     setShowKidManager(false);
                                                     setCurrentKid(kid);
-                                                    setView('games');
+                                                    setView('family_games');
                                                     alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
                                                 }}
                                                 className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
                                             >
                                                 <Gamepad2 className="w-4 h-4" />
                                                 <span className="text-[10px] font-bold">Play</span>
+                                            </button>
+                                            <button
+                                                onClick={async () => {
+                                                    const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
+                                                    if (newPin && /^\d{4}$/.test(newPin)) {
+                                                        try {
+                                                            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
+                                                            alert('PIN updated successfully! 🔒');
+                                                        } catch (err) {
+                                                            console.error(err);
+                                                            alert('Failed to update PIN.');
+                                                        }
+                                                    } else if (newPin !== null) {
+                                                        alert('Invalid PIN. Must be 4 digits.');
+                                                    }
+                                                }}
+                                                className="text-orange-400 hover:text-orange-600 p-2"
+                                                title="Reset PIN"
+                                            >
+                                                <Lock className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => deleteKidProfile(kid.id, kid.name)}
@@ -4964,7 +5147,7 @@ Generated by Unity Bridge - Relationship OS`;
                             <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
                         </button>
                         <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldCheckComp className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+                            <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
                         </button>
                         <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
                             <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
