@@ -5,7 +5,7 @@ import {
     Loader2, ShieldCheck as ShieldIcon, Users, AlertCircle, Hand,
     Bell, Zap, Lock, Globe, Save, Trash2, Edit3, Send,
     Clock, Calendar, ExternalLink, Moon, Coffee, Anchor,
-    Wind, Thermometer, PenTool
+    Wind, Thermometer, PenTool, LayoutDashboard
 } from 'lucide-react';
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAnalytics } from "firebase/analytics";
@@ -16,7 +16,7 @@ import {
     getFirestore, doc, setDoc, getDoc, collection, updateDoc,
     onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
-import { calculateMoveScore, getBonusType, LETTER_POINTS } from './letterLinkLogic';
+import { LETTER_POINTS, getBonusType, calculateMoveScore, validateWord, getWordsFormed } from './letterLinkLogic';
 import { SHIPS, GRID_SIZE, createEmptyGrid, isValidPlacement, placeShipOnGrid, processAttack, checkAllShipsSunk, countRemainingShips, getAttackDisplay, hasPlacedAllShips } from './battleshipLogic';
 
 // --- CONFIGURATION ---
@@ -1930,6 +1930,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 {[
                                     { id: 'affection', label: '💕 Love', short: '💕' },
                                     { id: 'communicate', label: '💬 Talk', short: '💬' },
+                                    { id: 'date', label: '📅 Date', short: '📅' },
                                     { id: 'journal', label: '📔 Journal', short: '📔' },
                                     { id: 'settings', label: '⚙️', short: '⚙️' }
                                 ].map(tab => (
@@ -2008,6 +2009,94 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                 <button onClick={() => saveToJournal()} className={`font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2 border ${darkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>PRIVATE</button>
                                                 <button onClick={saveToBridge} className="bg-green-600 text-white font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2">SHARE</button>
                                             </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {activeTab === 'date' && (
+                                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-50'}`}>
+                                    <div className="text-center space-y-2">
+                                        <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                                            <Heart className="w-8 h-8 text-pink-600" />
+                                        </div>
+                                        <h2 className={`text-2xl font-black tracking-tighter italic ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Date Night</h2>
+                                        <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>AI-generated date ideas just for you two</p>
+                                    </div>
+
+                                    <div className={`rounded-3xl border p-4 space-y-3 ${darkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-white border-pink-100 shadow-sm'}`}>
+                                        <h3 className="text-[10px] font-black text-pink-600 uppercase tracking-widest text-center">Select Your Budget</h3>
+                                        <div className="grid grid-cols-4 gap-1.5">
+                                            {[{ id: 'free', label: 'Free', emoji: '🆓' }, { id: 'cheap', label: '<$30', emoji: '💵' }, { id: 'moderate', label: '$30-75', emoji: '💳' }, { id: 'splurge', label: '$75+', emoji: '✨' }].map(budget => (
+                                                <button
+                                                    key={budget.id}
+                                                    onClick={() => generateDateNight(budget.id)}
+                                                    disabled={isGenerating}
+                                                    className={`p-2 rounded-xl text-center transition-all disabled:opacity-50 ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-600' : 'bg-slate-50 hover:bg-pink-50 border-slate-200 hover:border-pink-200'}`}
+                                                >
+                                                    <span className="text-xl block">{budget.emoji}</span>
+                                                    <span className={`text-[8px] font-bold leading-tight block ${darkMode ? 'text-slate-400' : 'text-slate-600'}`}>{budget.label}</span>
+                                                </button>
+                                            ))}
+                                        </div>
+                                        {isGenerating && (
+                                            <div className="text-center py-4 text-pink-500">
+                                                <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                                                <p className="text-xs font-bold">Planning romantic ideas...</p>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {dateIdeas.length > 0 && (
+                                        <div className="space-y-4">
+                                            <h3 className={`text-lg font-black px-2 ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Your Date Ideas</h3>
+                                            {dateIdeas.map((date, i) => (
+                                                <div key={i} className={`rounded-[2rem] shadow-sm border p-6 space-y-4 ${darkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-white border-pink-100'}`}>
+                                                    <div className="flex items-start justify-between">
+                                                        <h4 className={`text-lg font-black ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>{date.title}</h4>
+                                                        <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-3 py-1 rounded-full">{date.cost}</span>
+                                                    </div>
+                                                    <p className={`text-sm leading-relaxed ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>{date.description}</p>
+                                                    <div className={`p-4 rounded-2xl border ${darkMode ? 'bg-pink-900/20 border-pink-800' : 'bg-gradient-to-r from-pink-50 to-rose-50 border-pink-100'}`}>
+                                                        <p className="text-[10px] font-black text-pink-600 uppercase mb-1">💡 Love Language Tip</p>
+                                                        <p className={`text-xs italic ${darkMode ? 'text-pink-100' : 'text-slate-700'}`}>{date.tip}</p>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => copyToClipboard(`${date.title}: ${date.description}`, `d-${i}`)}
+                                                            className={`flex-1 py-3 text-[9px] font-bold rounded-xl flex items-center justify-center gap-1 ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-500'}`}
+                                                        >
+                                                            {copiedId === `d-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                                                            {copiedId === `d-${i}` ? 'Copied!' : 'Copy'}
+                                                        </button>
+                                                        <button
+                                                            onClick={() => saveToBridge(`Date idea: ${date.title} - ${date.description}`)}
+                                                            className="flex-1 py-3 text-[9px] font-bold text-white bg-pink-600 rounded-xl flex items-center justify-center gap-1 shadow-lg"
+                                                        >
+                                                            <Share2 className="w-3 h-3" />
+                                                            Share
+                                                        </button>
+                                                    </div>
+                                                    <div className="flex gap-2 pt-2 border-t border-slate-100">
+                                                        <a
+                                                            href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Date Night: ${date.title}`)}&details=${encodeURIComponent(`${date.description}\n\n💡 Tip: ${date.tip}\n\nBudget: ${date.cost}`)}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="flex-1 py-3 text-[9px] font-bold text-white bg-blue-600 rounded-xl flex items-center justify-center gap-1"
+                                                        >
+                                                            <Calendar className="w-3 h-3" />
+                                                            Google Calendar
+                                                        </a>
+                                                        <button
+                                                            onClick={() => copyToClipboard(`Date Night: ${date.title}\n${date.description}\n\n💡 ${date.tip}\n\nBudget: ${date.cost}`, `cal-${i}`)}
+                                                            className={`flex-1 py-3 text-[9px] font-bold rounded-xl flex items-center justify-center gap-1 ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+                                                        >
+                                                            {copiedId === `cal-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Calendar className="w-3 h-3" />}
+                                                            {copiedId === `cal-${i}` ? 'Copied!' : 'iPhone Copy'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     )}
                                 </div>
@@ -2542,93 +2631,7 @@ Generated by Unity Bridge - Relationship OS`;
                         </div>
                     )}
 
-                    {view === 'date' && (
-                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                            <div className="text-center space-y-2 pt-2">
-                                <div className="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
-                                    <Heart className="w-8 h-8 text-pink-600" />
-                                </div>
-                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Date Night</h2>
-                                <p className="text-xs text-slate-400">AI-generated date ideas just for you two</p>
-                            </div>
 
-                            <div className="bg-white rounded-[2rem] shadow-xl border border-pink-100 p-4 space-y-3">
-                                <h3 className="text-[10px] font-black text-pink-600 uppercase tracking-widest text-center">Select Your Budget</h3>
-                                <div className="grid grid-cols-4 gap-1.5">
-                                    {[{ id: 'free', label: 'Free', emoji: '🆓' }, { id: 'cheap', label: '<$30', emoji: '💵' }, { id: 'moderate', label: '$30-75', emoji: '💳' }, { id: 'splurge', label: '$75+', emoji: '✨' }].map(budget => (
-                                        <button
-                                            key={budget.id}
-                                            onClick={() => generateDateNight(budget.id)}
-                                            disabled={isGenerating}
-                                            className="p-2 bg-slate-50 hover:bg-pink-50 border border-slate-200 hover:border-pink-200 rounded-xl text-center transition-all disabled:opacity-50"
-                                        >
-                                            <span className="text-xl block">{budget.emoji}</span>
-                                            <span className="text-[8px] font-bold text-slate-600 leading-tight block">{budget.label}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                                {isGenerating && (
-                                    <div className="text-center py-4 text-pink-500">
-                                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
-                                        <p className="text-xs font-bold">Planning romantic ideas...</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {dateIdeas.length > 0 && (
-                                <div className="space-y-4">
-                                    <h3 className="text-lg font-black text-slate-800 px-2">Your Date Ideas</h3>
-                                    {dateIdeas.map((date, i) => (
-                                        <div key={i} className="bg-white rounded-[2.5rem] shadow-xl border border-pink-100 p-6 space-y-4">
-                                            <div className="flex items-start justify-between">
-                                                <h4 className="text-lg font-black text-slate-800">{date.title}</h4>
-                                                <span className="text-[10px] font-bold text-pink-600 bg-pink-50 px-3 py-1 rounded-full">{date.cost}</span>
-                                            </div>
-                                            <p className="text-sm text-slate-600 leading-relaxed">{date.description}</p>
-                                            <div className="p-4 bg-gradient-to-r from-pink-50 to-rose-50 rounded-2xl border border-pink-100">
-                                                <p className="text-[10px] font-black text-pink-600 uppercase mb-1">💡 Love Language Tip</p>
-                                                <p className="text-xs text-slate-700 italic">{date.tip}</p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => copyToClipboard(`${date.title}: ${date.description}`, `d-${i}`)}
-                                                    className="flex-1 py-3 text-[9px] font-bold text-slate-500 bg-slate-100 rounded-xl flex items-center justify-center gap-1"
-                                                >
-                                                    {copiedId === `d-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                                                    {copiedId === `d-${i}` ? 'Copied!' : 'Copy'}
-                                                </button>
-                                                <button
-                                                    onClick={() => saveToBridge(`Date idea: ${date.title} - ${date.description}`)}
-                                                    className="flex-1 py-3 text-[9px] font-bold text-white bg-pink-600 rounded-xl flex items-center justify-center gap-1"
-                                                >
-                                                    <Share2 className="w-3 h-3" />
-                                                    Share
-                                                </button>
-                                            </div>
-                                            <div className="flex gap-2 pt-2 border-t border-slate-100">
-                                                <a
-                                                    href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Date Night: ${date.title}`)}&details=${encodeURIComponent(`${date.description}\n\n💡 Tip: ${date.tip}\n\nBudget: ${date.cost}`)}`}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex-1 py-3 text-[9px] font-bold text-white bg-blue-600 rounded-xl flex items-center justify-center gap-1"
-                                                >
-                                                    <Calendar className="w-3 h-3" />
-                                                    Google Calendar
-                                                </a>
-                                                <button
-                                                    onClick={() => copyToClipboard(`Date Night: ${date.title}\n${date.description}\n\n💡 ${date.tip}\n\nBudget: ${date.cost}`, `cal-${i}`)}
-                                                    className="flex-1 py-3 text-[9px] font-bold text-slate-600 bg-slate-100 rounded-xl flex items-center justify-center gap-1"
-                                                >
-                                                    {copiedId === `cal-${i}` ? <Check className="w-3 h-3 text-green-500" /> : <Calendar className="w-3 h-3" />}
-                                                    {copiedId === `cal-${i}` ? 'Copied!' : 'iPhone Copy'}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
-                    )}
 
                     {view === 'resolve' && (
                         <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
@@ -4563,24 +4566,50 @@ Generated by Unity Bridge - Relationship OS`;
 
                                 {/* LETTER LINK GAMEPLAY - Full Board */}
                                 {game.type === 'letter_link' && (() => {
-                                    let board = [];
-                                    try { board = JSON.parse(game.board || '[]'); } catch (e) { board = Array(121).fill(null); }
-                                    if (board.length === 0) board = Array(121).fill(null);
+                                    const board = (() => {
+                                        try {
+                                            const base = JSON.parse(game.board || '[]');
+                                            const full = base.length === 121 ? base : Array(121).fill(null);
+                                            // Overlay placed tiles
+                                            placedTiles.forEach(t => {
+                                                if (t.row >= 0 && t.row < 11 && t.col >= 0 && t.col < 11) {
+                                                    full[t.row * 11 + t.col] = { char: t.char, fromHandIndex: t.fromHandIndex };
+                                                }
+                                            });
+                                            return full;
+                                        } catch (e) { return Array(121).fill(null); }
+                                    })();
                                     const myHand = myData.hand || [];
 
                                     return (
-                                        <div className={`rounded-2xl shadow-lg border p-3 space-y-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                            {/* Scores */}
-                                            <div className="grid grid-cols-2 gap-2 text-center">
-                                                <div className="bg-purple-50 p-1.5 rounded-xl">
-                                                    <p className="text-[8px] font-black text-purple-500 uppercase">You</p>
+                                        <div className={`rounded-2xl shadow-lg border px-1 py-2 space-y-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
+                                            {/* SCORES & TILES */}
+                                            <div className="w-full flex justify-between items-center px-2 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
+                                                <div className="text-center">
+                                                    <p className="text-[9px] font-bold text-purple-400 uppercase">{myData.name || 'You'}</p>
                                                     <p className="text-lg font-black text-purple-600">{myData.score || 0}</p>
                                                 </div>
-                                                <div className="bg-slate-50 p-1.5 rounded-xl">
-                                                    <p className="text-[8px] font-black text-slate-400 uppercase">Opponent</p>
+                                                <div className="text-center px-3">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Tiles Left</p>
+                                                    <p className="text-sm font-bold text-slate-600">{game.bag?.length || 0}</p>
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">{opponentData.name || 'Opponent'}</p>
                                                     <p className="text-lg font-black text-slate-600">{opponentData.score || 0}</p>
                                                 </div>
                                             </div>
+
+                                            {/* Last Move */}
+                                            {game.history?.length > 0 && (
+                                                <div className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 text-center">
+                                                    <p className="text-[9px] text-amber-700">
+                                                        <span className="font-bold">{game.history[game.history.length - 1]?.playerName || 'Someone'}</span>
+                                                        {' scored '}
+                                                        <span className="font-black text-amber-900">{game.history[game.history.length - 1]?.points} pts</span>
+                                                        {game.history[game.history.length - 1]?.word && ` with "${game.history[game.history.length - 1]?.word}"`}
+                                                    </p>
+                                                </div>
+                                            )}
 
                                             {/* 11x11 BOARD */}
                                             <div className="grid grid-cols-11 gap-[1px] bg-indigo-900 p-0.5 rounded-lg border border-indigo-950 shadow-inner">
@@ -4616,7 +4645,7 @@ Generated by Unity Bridge - Relationship OS`;
                                                                     }
                                                                 }
                                                             }}
-                                                            className={`w-[26px] h-[26px] flex items-center justify-center text-[10px] font-black rounded-sm transition-all relative
+                                                            className={`w-[25px] h-[25px] flex items-center justify-center text-[10px] font-black rounded-sm transition-all relative
                                                                 ${hasLetter
                                                                     ? (isTemporary ? 'bg-amber-200 text-amber-900 shadow-md transform scale-105 z-10 animate-pop' : 'bg-amber-100 text-amber-900 border border-amber-300')
                                                                     : (bonus ? bonusStyles[bonus] : 'bg-indigo-50/10')}
@@ -4634,10 +4663,8 @@ Generated by Unity Bridge - Relationship OS`;
                                                 })}
                                             </div>
 
-                                            {/* Your Hand */}
-                                            <div className="text-center">
-                                                <p className="text-[9px] text-slate-400 mb-1">Your tiles (tap to select):</p>
-                                                <div className="flex justify-center gap-1">
+                                            <div className="flex flex-col items-center gap-2 w-full">
+                                                <div className="w-full bg-amber-800 p-2 rounded-xl shadow-lg flex justify-center gap-1.5">
                                                     {myHand.map((tile, i) => {
                                                         const isPlaced = placedTiles.some(t => t.fromHandIndex === i);
                                                         const isSelected = selectedTileIndex === i;
@@ -4648,7 +4675,7 @@ Generated by Unity Bridge - Relationship OS`;
                                                                 disabled={isPlaced || !isMyTurn}
                                                                 className={`w-10 h-12 rounded flex flex-col items-center justify-center font-black shadow transition-all
                                                                     ${isPlaced
-                                                                        ? 'bg-slate-200 text-slate-400 opacity-50'
+                                                                        ? 'bg-amber-900/50 text-amber-900/50 border-none'
                                                                         : (isSelected
                                                                             ? 'bg-amber-300 text-amber-950 border-b-4 border-amber-500 -translate-y-1'
                                                                             : 'bg-amber-100 text-amber-900 border-b-4 border-amber-300 hover:bg-amber-50')}
@@ -4663,504 +4690,555 @@ Generated by Unity Bridge - Relationship OS`;
                                             </div>
 
                                             {/* Actions */}
-                                            {isMyTurn && placedTiles.length > 0 && (
-                                                <div className="flex gap-2">
-                                                    <button
-                                                        onClick={() => { setPlacedTiles([]); setSelectedTileIndex(null); }}
-                                                        className="flex-1 py-2 bg-slate-200 text-slate-600 text-xs font-bold rounded-xl"
-                                                    >
-                                                        ↩️ Undo
-                                                    </button>
-                                                    <button
-                                                        onClick={async () => {
-                                                            // Submit word - simplified scoring (5 points per tile placed)
-                                                            const points = placedTiles.length * 5;
-                                                            const newBoard = [...board];
-                                                            placedTiles.forEach(t => { newBoard[t.row * 11 + t.col] = t.char; });
-                                                            const newHand = myHand.filter((_, i) => !placedTiles.some(t => t.fromHandIndex === i));
-                                                            // Draw new tiles
-                                                            const bag = game.bag || [];
-                                                            while (newHand.length < 7 && bag.length > 0) {
-                                                                newHand.push(bag.shift());
-                                                            }
-                                                            try {
-                                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                await updateDoc(gameRef, {
-                                                                    board: JSON.stringify(newBoard),
-                                                                    bag: bag,
-                                                                    [`players.${myId}.hand`]: newHand,
-                                                                    [`players.${myId}.score`]: (myData.score || 0) + points,
-                                                                    currentTurn: opponentId
-                                                                });
-                                                                setPlacedTiles([]);
-                                                                setSelectedTileIndex(null);
-                                                                alert(`✅ +${points} points! Opponent's turn.`);
-                                                            } catch (err) { console.error(err); alert('Error submitting'); }
-                                                        }}
-                                                        className="flex-1 py-2 bg-purple-600 text-white text-xs font-bold rounded-xl"
-                                                    >
-                                                        ✓ Submit ({placedTiles.length * 5} pts)
-                                                    </button>
-                                                </div>
-                                            )}
 
-                                            {!isMyTurn && (
-                                                <p className="text-center text-xs text-slate-400 py-2">⏳ Waiting for opponent...</p>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                {/* BATTLESHIP GAMEPLAY - Full Grids */}
-                                {game.type === 'battleship' && (() => {
-                                    const phase = game.phase || 'placing';
-                                    const winner = game.winner;
-
-                                    // Parse grids
-                                    let myGrid = [], myAttackGrid = [];
-                                    try { myGrid = JSON.parse(myData.grid || '[]'); } catch (e) { myGrid = Array(100).fill(null); }
-                                    try { myAttackGrid = JSON.parse(myData.attackGrid || '[]'); } catch (e) { myAttackGrid = Array(100).fill(null); }
-                                    if (myGrid.length === 0) myGrid = Array(100).fill(null);
-                                    if (myAttackGrid.length === 0) myAttackGrid = Array(100).fill(null);
-
-                                    return (
-                                        <div className={`rounded-2xl shadow-lg border p-3 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                            {/* Phase Header */}
-                                            <div className="text-center">
-                                                <p className="text-[10px] font-bold text-cyan-500 uppercase">
-                                                    {phase === 'placing' ? '🚢 Place Your Ships' : phase === 'battle' ? '💥 Battle Phase' : '🏆 Game Over'}
-                                                </p>
-                                                {winner && (
-                                                    <p className={`text-lg font-black ${winner === myId ? 'text-green-600' : 'text-red-500'}`}>
-                                                        {winner === myId ? '🎉 You Won!' : '💀 You Lost!'}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {/* Ship Counts */}
-                                            {(phase === 'battle' || phase === 'ended') && (
-                                                <div className="grid grid-cols-2 gap-2 text-center">
-                                                    <div className="bg-cyan-50 p-2 rounded-xl">
-                                                        <p className="text-[9px] font-black text-cyan-500 uppercase">Your Ships</p>
-                                                        <p className="text-lg font-black">{myData.shipsRemaining || 5} 🚢</p>
-                                                    </div>
-                                                    <div className="bg-red-50 p-2 rounded-xl">
-                                                        <p className="text-[9px] font-black text-red-500 uppercase">Enemy Ships</p>
-                                                        <p className="text-lg font-black">{opponentData.shipsRemaining || 5} 🚢</p>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* PLACING PHASE - RICH UPGRADE */}
-                                            {phase === 'placing' && !myData.ready && (
-                                                <div className="space-y-2">
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase">Select Ship to Place:</p>
-
-                                                    {/* Ship Selector */}
-                                                    <div className="grid grid-cols-5 gap-1">
-                                                        {Object.entries(SHIPS).map(([type, ship]) => (
-                                                            <button
-                                                                key={type}
-                                                                onClick={() => setBattleshipSelectedShip(type)}
-                                                                disabled={!!localShipPlacements[type]} // Reuse localShipPlacements or create new state? 
-                                                                // Strategy: We can reuse the state but must RESET it when entering this view? 
-                                                                // Actually, better to just reuse it since only one game active at once typically.
-                                                                className={`p-2 rounded-xl text-center transition-all ${localShipPlacements[type] ? 'bg-green-100 opacity-50'
-                                                                    : battleshipSelectedShip === type ? 'bg-cyan-500 text-white ring-2 ring-cyan-300'
-                                                                        : 'bg-slate-100 hover:bg-cyan-50'
-                                                                    }`}
-                                                            >
-                                                                <span className="text-xl">{ship.emoji}</span>
-                                                                <p className="text-[8px] font-bold">{ship.size}</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-
-                                                    {/* Rotate Button */}
-                                                    <button onClick={() => setBattleshipOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')} className="w-full py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
-                                                        {battleshipOrientation === 'horizontal' ? '↔️ Horizontal' : '↕️ Vertical'}
-                                                    </button>
-
-                                                    {/* The Grid (Using localPlacementGrid logic) */}
-                                                    <div className="flex justify-center bg-cyan-900 p-1 rounded-lg">
-                                                        <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-                                                            {(Object.keys(localShipPlacements).length > 0 ? localPlacementGrid : myGrid).flat().map((cell, idx) => {
-                                                                const row = Math.floor(idx / GRID_SIZE);
-                                                                const col = idx % GRID_SIZE;
-                                                                // If we have local placements (UI state), show those. 
-                                                                // NOTE: MyGrid from DB might be empty initially. We rely on localPlacementGrid for the UI during dragging.
-                                                                const hasShip = cell && cell.ship;
-
-                                                                return (
-                                                                    <button
-                                                                        key={idx}
-                                                                        onClick={() => placeBattleshipShip(row, col)}
-                                                                        className={`w-[28px] h-[28px] rounded-sm text-xs font-bold transition-all ${hasShip ? 'bg-cyan-500 text-white' : 'bg-blue-100 hover:bg-cyan-200'}`}
-                                                                    >
-                                                                        {hasShip ? '🚢' : ''}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-
-                                                    <p className="text-[9px] text-center text-slate-400">{Object.keys(localShipPlacements).length}/5 ships placed</p>
-
-                                                    {Object.keys(localShipPlacements).length >= 5 && (
-                                                        <button
-                                                            onClick={async () => {
-                                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                // Convert the localPlacementGrid (which contains objects) to just 'ship' strings or simple objects for storage
-                                                                // Actually best to store full object if battleshiplogic uses it, or just simplify.
-                                                                // The couples logic stores `[`players.${role}.grid`]: JSON.stringify(myGrid)` where myGrid comes from localPlacementGrid.
-
-                                                                await updateDoc(gameRef, { [`players.${myId}.grid`]: JSON.stringify(localPlacementGrid), [`players.${myId}.ready`]: true });
-
-                                                                // Check if opponent ready
-                                                                if (opponentData.ready) {
-                                                                    await updateDoc(gameRef, { phase: 'battle', currentTurn: game.createdBy });
-                                                                }
-                                                                // Clear local state
-                                                                setLocalShipPlacements({});
-                                                                setLocalPlacementGrid(createEmptyGrid());
-                                                            }}
-                                                            className="w-full py-2 bg-cyan-600 text-white font-bold text-sm rounded-xl"
-                                                        >
-                                                            ✓ Ready to Battle!
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {phase === 'placing' && myData.ready && (
-                                                <div className="text-center py-6">
-                                                    <p className="text-2xl mb-2">⏳</p>
-                                                    <p className="text-sm font-bold text-slate-600">Ships placed!</p>
-                                                    <p className="text-xs text-slate-400">Waiting for opponent...</p>
-                                                </div>
-                                            )}
-
-                                            {/* BATTLE PHASE - Attack Grid */}
-                                            {phase === 'battle' && (
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] text-center text-slate-500">{isMyTurn ? '🎯 Tap to attack!' : '⏳ Opponent attacking...'}</p>
-                                                    <div className="grid grid-cols-10 gap-[2px] bg-slate-700 p-1 rounded-lg">
-                                                        {myAttackGrid.map((cell, idx) => {
-                                                            const isHit = cell === 'hit';
-                                                            const isMiss = cell === 'miss';
-                                                            const isUnknown = !cell;
-                                                            return (
-                                                                <button
-                                                                    key={idx}
-                                                                    disabled={!isMyTurn || !isUnknown}
-                                                                    onClick={async () => {
-                                                                        if (!isMyTurn || !isUnknown) return;
-                                                                        try {
-                                                                            // Check opponent's grid
-                                                                            let oppGrid = [];
-                                                                            try { oppGrid = JSON.parse(opponentData.grid || '[]'); } catch (e) { oppGrid = Array(100).fill(null); }
-                                                                            const hit = oppGrid[idx] === 'ship';
-
-                                                                            const newAttackGrid = [...myAttackGrid];
-                                                                            newAttackGrid[idx] = hit ? 'hit' : 'miss';
-
-                                                                            const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                            const updates = {
-                                                                                [`players.${myId}.attackGrid`]: JSON.stringify(newAttackGrid),
-                                                                                currentTurn: opponentId
-                                                                            };
-
-                                                                            if (hit) {
-                                                                                const newShipsRemaining = (opponentData.shipsRemaining || 17) - 1;
-                                                                                updates[`players.${opponentId}.shipsRemaining`] = newShipsRemaining;
-                                                                                if (newShipsRemaining <= 0) {
-                                                                                    updates.phase = 'ended';
-                                                                                    updates.winner = myId;
-                                                                                }
-                                                                            }
-
-                                                                            await updateDoc(gameRef, updates);
-                                                                            alert(hit ? '💥 HIT!' : '💦 Miss...');
-                                                                        } catch (err) { console.error(err); }
-                                                                    }}
-                                                                    className={`w-[28px] h-[28px] rounded-sm transition-all
-                                                                        ${isHit ? 'bg-red-500' : isMiss ? 'bg-slate-400' : 'bg-slate-200'}
-                                                                        ${isUnknown && isMyTurn ? 'hover:bg-red-200 cursor-pointer' : ''}
-                                                                    `}
-                                                                >
-                                                                    {isHit && '💥'}
-                                                                    {isMiss && '•'}
-                                                                </button>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Game Over - Close Button */}
-                                            {phase === 'ended' && (
+                                            {/* Actions */}
+                                            <div className="flex gap-2 w-full">
+                                                <button
+                                                    onClick={() => { setPlacedTiles([]); setSelectedTileIndex(null); }}
+                                                    disabled={placedTiles.length === 0}
+                                                    className="flex-1 py-3 bg-red-100 text-red-600 font-bold text-xs rounded-xl disabled:opacity-50"
+                                                >
+                                                    Recall
+                                                </button>
                                                 <button
                                                     onClick={async () => {
+                                                        const shuffled = [...myHand].sort(() => Math.random() - 0.5);
+                                                        const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
+                                                        await updateDoc(gameRef, { [`players.${myId}.hand`]: shuffled });
+                                                    }}
+                                                    className="flex-1 py-3 bg-blue-100 text-blue-600 font-bold text-xs rounded-xl"
+                                                >
+                                                    Shuffle
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        // validation logic stays same
+                                                        const words = getWordsFormed(placedTiles, board);
+                                                        if (words.length === 0) { alert("Please form a connected word!"); return; }
+                                                        let allValid = true;
+                                                        for (const w of words) {
+                                                            const isValid = await validateWord(w);
+                                                            if (!isValid) { if (!window.confirm(`"${w}" might not be a valid word. Play anyway?`)) { allValid = false; break; } }
+                                                        }
+                                                        if (!allValid) return;
+
+                                                        const points = placedTiles.length * 5;
+                                                        const newBoard = [...board];
+                                                        placedTiles.forEach(t => { newBoard[t.row * 11 + t.col] = t.char; });
+                                                        const newHand = myHand.filter((_, i) => !placedTiles.some(t => t.fromHandIndex === i));
+                                                        const bag = game.bag || [];
+                                                        while (newHand.length < 7 && bag.length > 0) { newHand.push(bag.shift()); }
+
                                                         try {
                                                             const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                            const historyRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-                                                            await addDoc(historyRef, { ...game, completedAt: serverTimestamp() });
+                                                            await updateDoc(gameRef, {
+                                                                board: JSON.stringify(newBoard),
+                                                                bag: bag,
+                                                                [`players.${myId}.hand`]: newHand,
+                                                                [`players.${myId}.score`]: (myData.score || 0) + points,
+                                                                currentTurn: opponentId,
+                                                                history: [...(game.history || []), { playerName: myData.name || 'You', points, word: words.join(', ') }]
+                                                            });
+                                                            setPlacedTiles([]);
+                                                            setSelectedTileIndex(null);
+                                                        } catch (err) { console.error(err); alert('Error submitting'); }
+                                                    }}
+                                                    disabled={placedTiles.length === 0}
+                                                    className="flex-2 w-full py-3 bg-green-500 text-white font-black text-xs rounded-xl disabled:bg-slate-300 disabled:text-slate-500 shadow-lg"
+                                                >
+                                                    ✓ Submit
+                                                </button>
+                                            </div>
+
+                                            <div className="flex gap-2 w-full">
+                                                <button
+                                                    onClick={async () => {
+                                                        if (window.confirm("Pass turn?")) {
+                                                            const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
+                                                            await updateDoc(gameRef, { currentTurn: opponentId });
+                                                        }
+                                                    }}
+                                                    disabled={placedTiles.length > 0}
+                                                    className="flex-1 py-2 bg-slate-100 text-slate-500 font-bold text-[10px] rounded-lg disabled:opacity-40"
+                                                >
+                                                    ⏭ Pass Turn
+                                                </button>
+                                                <button
+                                                    onClick={async () => {
+                                                        if (window.confirm("End game and declare winner?")) {
+                                                            const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
                                                             await deleteDoc(gameRef);
                                                             setView('family_games');
-                                                        } catch (err) { console.error(err); }
+                                                        }
                                                     }}
-                                                    className="w-full py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                                                    className="flex-1 py-2 bg-orange-100 text-orange-500 font-bold text-[10px] rounded-lg"
                                                 >
-                                                    Close Game
+                                                    🏁 End Game
                                                 </button>
-                                            )}
+                                            </div>
                                         </div>
-                                    );
-                                })()}
+                                    )
+                                }
 
-                                {/* Wager Display */}
-                                {game.wager && (
-                                    <div className="px-3 py-2 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl text-center">
-                                        <p className="text-[9px] font-bold text-purple-600 uppercase">💝 Wager</p>
-                                        <p className="text-xs font-bold text-slate-700">{game.wager}</p>
-                                    </div>
+                                            {!isMyTurn && (
+                                    <p className="text-center text-xs text-slate-400 py-2">⏳ Waiting for opponent...</p>
                                 )}
-
-                                {/* Back Button */}
-                                <button onClick={() => { setCurrentFamilyGameId(null); setView('family_games'); }} className="w-full py-3 text-xs font-bold text-slate-400">
-                                    ← Back to Family Games
-                                </button>
                             </div>
                         );
                     })()}
 
-                    {/* NEW: Conflict Resolution View */}
-                    {
-                        view === 'resolve' && (
-                            <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                                <div className="text-center space-y-2 pt-2">
-                                    <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
-                                        <Anchor className="w-7 h-7 text-orange-600" />
-                                    </div>
-                                    <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
-                                    <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+                    {/* BATTLESHIP GAMEPLAY - Full Grids */}
+                    {game.type === 'battleship' && (() => {
+                        const phase = game.phase || 'placing';
+                        const winner = game.winner;
+
+                        // Parse grids
+                        let myGrid = [], myAttackGrid = [];
+                        try { myGrid = JSON.parse(myData.grid || '[]'); } catch (e) { myGrid = Array(100).fill(null); }
+                        try { myAttackGrid = JSON.parse(myData.attackGrid || '[]'); } catch (e) { myAttackGrid = Array(100).fill(null); }
+                        if (myGrid.length === 0) myGrid = Array(100).fill(null);
+                        if (myAttackGrid.length === 0) myAttackGrid = Array(100).fill(null);
+
+                        return (
+                            <div className={`rounded-2xl shadow-lg border p-3 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
+                                {/* Phase Header */}
+                                <div className="text-center">
+                                    <p className="text-[10px] font-bold text-cyan-500 uppercase">
+                                        {phase === 'placing' ? '🚢 Place Your Ships' : phase === 'battle' ? '💥 Battle Phase' : '🏆 Game Over'}
+                                    </p>
+                                    {winner && (
+                                        <p className={`text-lg font-black ${winner === myId ? 'text-green-600' : 'text-red-500'}`}>
+                                            {winner === myId ? '🎉 You Won!' : '💀 You Lost!'}
+                                        </p>
+                                    )}
                                 </div>
 
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
-                                    {/* Progress */}
-                                    <div className="flex gap-1">
-                                        {CONFLICT_STEPS.map((_, i) => (
-                                            <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
-                                        ))}
+                                {/* Ship Counts */}
+                                {(phase === 'battle' || phase === 'ended') && (
+                                    <div className="grid grid-cols-2 gap-2 text-center">
+                                        <div className="bg-cyan-50 p-2 rounded-xl">
+                                            <p className="text-[9px] font-black text-cyan-500 uppercase">Your Ships</p>
+                                            <p className="text-lg font-black">{myData.shipsRemaining || 5} 🚢</p>
+                                        </div>
+                                        <div className="bg-red-50 p-2 rounded-xl">
+                                            <p className="text-[9px] font-black text-red-500 uppercase">Enemy Ships</p>
+                                            <p className="text-lg font-black">{opponentData.shipsRemaining || 5} 🚢</p>
+                                        </div>
                                     </div>
+                                )}
 
-                                    {/* Current Step */}
-                                    <div className="text-center py-4">
-                                        <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
-                                        <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
-                                    </div>
+                                {/* PLACING PHASE - RICH UPGRADE */}
+                                {phase === 'placing' && !myData.ready && (
+                                    <div className="space-y-2">
+                                        <p className="text-[9px] font-black text-slate-400 uppercase">Select Ship to Place:</p>
 
-                                    <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
-                                        <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
-                                    </div>
+                                        {/* Ship Selector */}
+                                        <div className="grid grid-cols-5 gap-1">
+                                            {Object.entries(SHIPS).map(([type, ship]) => (
+                                                <button
+                                                    key={type}
+                                                    onClick={() => setBattleshipSelectedShip(type)}
+                                                    disabled={!!localShipPlacements[type]} // Reuse localShipPlacements or create new state? 
+                                                    // Strategy: We can reuse the state but must RESET it when entering this view? 
+                                                    // Actually, better to just reuse it since only one game active at once typically.
+                                                    className={`p-2 rounded-xl text-center transition-all ${localShipPlacements[type] ? 'bg-green-100 opacity-50'
+                                                        : battleshipSelectedShip === type ? 'bg-cyan-500 text-white ring-2 ring-cyan-300'
+                                                            : 'bg-slate-100 hover:bg-cyan-50'
+                                                        }`}
+                                                >
+                                                    <span className="text-xl">{ship.emoji}</span>
+                                                    <p className="text-[8px] font-bold">{ship.size}</p>
+                                                </button>
+                                            ))}
+                                        </div>
 
-                                    <button
-                                        onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
-                                        className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
-                                    >
-                                        <Share2 className="w-4 h-4" />
-                                        Share: "{CONFLICT_STEPS[conflictStep].action}"
-                                    </button>
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
-                                            disabled={conflictStep === 0}
-                                            className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
-                                        >
-                                            ← Previous
+                                        {/* Rotate Button */}
+                                        <button onClick={() => setBattleshipOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')} className="w-full py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
+                                            {battleshipOrientation === 'horizontal' ? '↔️ Horizontal' : '↕️ Vertical'}
                                         </button>
-                                        <button
-                                            onClick={() => {
-                                                if (conflictStep < CONFLICT_STEPS.length - 1) {
-                                                    setConflictStep(conflictStep + 1);
-                                                } else {
-                                                    alert('🎉 You completed the conflict resolution process! Great job working through this together.');
-                                                    setConflictStep(0);
-                                                }
-                                            }}
-                                            className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
-                                        >
-                                            {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
-                                        </button>
-                                    </div>
-                                </div>
 
-                                <button
-                                    onClick={() => { setConflictStep(0); setView('hub'); }}
-                                    className="w-full py-3 text-slate-400 text-xs font-bold"
-                                >
-                                    Exit to Hub
-                                </button>
-                            </div>
-                        )
-                    }
-                </div >
-            </main >
+                                        {/* The Grid (Using localPlacementGrid logic) */}
+                                        <div className="flex justify-center bg-cyan-900 p-1 rounded-lg">
+                                            <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
+                                                {(Object.keys(localShipPlacements).length > 0 ? localPlacementGrid : myGrid).flat().map((cell, idx) => {
+                                                    const row = Math.floor(idx / GRID_SIZE);
+                                                    const col = idx % GRID_SIZE;
+                                                    // If we have local placements (UI state), show those. 
+                                                    // NOTE: MyGrid from DB might be empty initially. We rely on localPlacementGrid for the UI during dragging.
+                                                    const hasShip = cell && cell.ship;
 
-            {/* Kid Manager Modal (Parents only) */}
-            {showKidManager && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                        <div className="flex justify-between items-center">
-                            <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
-                            <button
-                                onClick={() => setShowKidManager(false)}
-                                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        {/* Add New Kid Form */}
-                        <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
-                            <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
-                            <div className="space-y-2">
-                                <input
-                                    type="text"
-                                    id="kid-name-input"
-                                    placeholder="Kid's Name"
-                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                />
-                                <div className="grid grid-cols-6 gap-2">
-                                    {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
-                                        <button
-                                            key={emoji}
-                                            type="button"
-                                            onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
-                                            className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
-                                        >
-                                            {emoji}
-                                        </button>
-                                    ))}
-                                </div>
-                                <input
-                                    type="text"
-                                    id="kid-avatar-input"
-                                    defaultValue="🧒"
-                                    className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
-                                    readOnly
-                                />
-                                <input
-                                    type="password"
-                                    inputMode="numeric"
-                                    maxLength={4}
-                                    id="kid-pin-input"
-                                    placeholder="4-digit PIN"
-                                    className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                />
-                                <button
-                                    onClick={() => {
-                                        const name = document.getElementById('kid-name-input').value.trim();
-                                        const avatar = document.getElementById('kid-avatar-input').value || '🧒';
-                                        const pin = document.getElementById('kid-pin-input').value;
-                                        if (!name) { alert('Please enter a name'); return; }
-                                        if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
-                                        addKidProfile(name, avatar, pin);
-                                        document.getElementById('kid-name-input').value = '';
-                                        document.getElementById('kid-avatar-input').value = '🧒';
-                                        document.getElementById('kid-pin-input').value = '';
-                                    }}
-                                    className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
-                                >
-                                    ➕ Add Kid
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Existing Kids */}
-                        {kidProfiles.length > 0 && (
-                            <div className="space-y-2">
-                                <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
-                                {kidProfiles.map(kid => (
-                                    <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <span className="text-2xl">{kid.avatar || '🧒'}</span>
-                                            <div>
-                                                <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
-                                                <p className="text-[10px] text-slate-400">PIN: ••••</p>
+                                                    return (
+                                                        <button
+                                                            key={idx}
+                                                            onClick={() => placeBattleshipShip(row, col)}
+                                                            className={`w-[28px] h-[28px] rounded-sm text-xs font-bold transition-all ${hasShip ? 'bg-cyan-500 text-white' : 'bg-blue-100 hover:bg-cyan-200'}`}
+                                                        >
+                                                            {hasShip ? '🚢' : ''}
+                                                        </button>
+                                                    );
+                                                })}
                                             </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    setShowKidManager(false);
-                                                    setCurrentKid(kid);
-                                                    setView('family_games');
-                                                    alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
-                                                }}
-                                                className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
-                                            >
-                                                <Gamepad2 className="w-4 h-4" />
-                                                <span className="text-[10px] font-bold">Play</span>
-                                            </button>
+
+                                        <p className="text-[9px] text-center text-slate-400">{Object.keys(localShipPlacements).length}/5 ships placed</p>
+
+                                        {Object.keys(localShipPlacements).length >= 5 && (
                                             <button
                                                 onClick={async () => {
-                                                    const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
-                                                    if (newPin && /^\d{4}$/.test(newPin)) {
-                                                        try {
-                                                            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
-                                                            alert('PIN updated successfully! 🔒');
-                                                        } catch (err) {
-                                                            console.error(err);
-                                                            alert('Failed to update PIN.');
-                                                        }
-                                                    } else if (newPin !== null) {
-                                                        alert('Invalid PIN. Must be 4 digits.');
+                                                    const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
+                                                    // Convert the localPlacementGrid (which contains objects) to just 'ship' strings or simple objects for storage
+                                                    // Actually best to store full object if battleshiplogic uses it, or just simplify.
+                                                    // The couples logic stores `[`players.${role}.grid`]: JSON.stringify(myGrid)` where myGrid comes from localPlacementGrid.
+
+                                                    await updateDoc(gameRef, { [`players.${myId}.grid`]: JSON.stringify(localPlacementGrid), [`players.${myId}.ready`]: true });
+
+                                                    // Check if opponent ready
+                                                    if (opponentData.ready) {
+                                                        await updateDoc(gameRef, { phase: 'battle', currentTurn: game.createdBy });
                                                     }
+                                                    // Clear local state
+                                                    setLocalShipPlacements({});
+                                                    setLocalPlacementGrid(createEmptyGrid());
                                                 }}
-                                                className="text-orange-400 hover:text-orange-600 p-2"
-                                                title="Reset PIN"
+                                                className="w-full py-2 bg-cyan-600 text-white font-bold text-sm rounded-xl"
                                             >
-                                                <Lock className="w-4 h-4" />
+                                                ✓ Ready to Battle!
                                             </button>
-                                            <button
-                                                onClick={() => deleteKidProfile(kid.id, kid.name)}
-                                                className="text-red-400 hover:text-red-600 p-2"
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
+                                        )}
+                                    </div>
+                                )}
+
+                                {phase === 'placing' && myData.ready && (
+                                    <div className="text-center py-6">
+                                        <p className="text-2xl mb-2">⏳</p>
+                                        <p className="text-sm font-bold text-slate-600">Ships placed!</p>
+                                        <p className="text-xs text-slate-400">Waiting for opponent...</p>
+                                    </div>
+                                )}
+
+                                {/* BATTLE PHASE - Attack Grid */}
+                                {phase === 'battle' && (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] text-center text-slate-500">{isMyTurn ? '🎯 Tap to attack!' : '⏳ Opponent attacking...'}</p>
+                                        <div className="grid grid-cols-10 gap-[2px] bg-slate-700 p-1 rounded-lg">
+                                            {myAttackGrid.map((cell, idx) => {
+                                                const isHit = cell === 'hit';
+                                                const isMiss = cell === 'miss';
+                                                const isUnknown = !cell;
+                                                return (
+                                                    <button
+                                                        key={idx}
+                                                        disabled={!isMyTurn || !isUnknown}
+                                                        onClick={async () => {
+                                                            if (!isMyTurn || !isUnknown) return;
+                                                            try {
+                                                                // Check opponent's grid
+                                                                let oppGrid = [];
+                                                                try { oppGrid = JSON.parse(opponentData.grid || '[]'); } catch (e) { oppGrid = Array(100).fill(null); }
+                                                                const hit = oppGrid[idx] === 'ship';
+
+                                                                const newAttackGrid = [...myAttackGrid];
+                                                                newAttackGrid[idx] = hit ? 'hit' : 'miss';
+
+                                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
+                                                                const updates = {
+                                                                    [`players.${myId}.attackGrid`]: JSON.stringify(newAttackGrid),
+                                                                    currentTurn: opponentId
+                                                                };
+
+                                                                if (hit) {
+                                                                    const newShipsRemaining = (opponentData.shipsRemaining || 17) - 1;
+                                                                    updates[`players.${opponentId}.shipsRemaining`] = newShipsRemaining;
+                                                                    if (newShipsRemaining <= 0) {
+                                                                        updates.phase = 'ended';
+                                                                        updates.winner = myId;
+                                                                    }
+                                                                }
+
+                                                                await updateDoc(gameRef, updates);
+                                                                alert(hit ? '💥 HIT!' : '💦 Miss...');
+                                                            } catch (err) { console.error(err); }
+                                                        }}
+                                                        className={`w-[28px] h-[28px] rounded-sm transition-all
+                                                                        ${isHit ? 'bg-red-500' : isMiss ? 'bg-slate-400' : 'bg-slate-200'}
+                                                                        ${isUnknown && isMyTurn ? 'hover:bg-red-200 cursor-pointer' : ''}
+                                                                    `}
+                                                    >
+                                                        {isHit && '💥'}
+                                                        {isMiss && '•'}
+                                                    </button>
+                                                );
+                                            })}
                                         </div>
                                     </div>
-                                ))}
+                                )}
+
+                                {/* Game Over - Close Button */}
+                                {phase === 'ended' && (
+                                    <button
+                                        onClick={async () => {
+                                            try {
+                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
+                                                const historyRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
+                                                await addDoc(historyRef, { ...game, completedAt: serverTimestamp() });
+                                                await deleteDoc(gameRef);
+                                                setView('family_games');
+                                            } catch (err) { console.error(err); }
+                                        }}
+                                        className="w-full py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
+                                    >
+                                        Close Game
+                                    </button>
+                                )}
                             </div>
-                        )}
+                        );
+                    })()}
+
+                    {/* Wager Display */}
+                    {game.wager && (
+                        <div className="px-3 py-2 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl text-center">
+                            <p className="text-[9px] font-bold text-purple-600 uppercase">💝 Wager</p>
+                            <p className="text-xs font-bold text-slate-700">{game.wager}</p>
+                        </div>
+                    )}
+
+                    {/* Back Button */}
+                    <button onClick={() => { setCurrentFamilyGameId(null); setView('family_games'); }} className="w-full py-3 text-xs font-bold text-slate-400">
+                        ← Back to Family Games
+                    </button>
+                </div>
+                );
+                    })()}
+
+                {/* NEW: Conflict Resolution View */}
+                {
+                    view === 'resolve' && (
+                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+                            <div className="text-center space-y-2 pt-2">
+                                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                                    <Anchor className="w-7 h-7 text-orange-600" />
+                                </div>
+                                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
+                                <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+                            </div>
+
+                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
+                                {/* Progress */}
+                                <div className="flex gap-1">
+                                    {CONFLICT_STEPS.map((_, i) => (
+                                        <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
+                                    ))}
+                                </div>
+
+                                {/* Current Step */}
+                                <div className="text-center py-4">
+                                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
+                                    <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
+                                </div>
+
+                                <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
+                                    <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
+                                </div>
+
+                                <button
+                                    onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
+                                    className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
+                                >
+                                    <Share2 className="w-4 h-4" />
+                                    Share: "{CONFLICT_STEPS[conflictStep].action}"
+                                </button>
+
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
+                                        disabled={conflictStep === 0}
+                                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
+                                    >
+                                        ← Previous
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            if (conflictStep < CONFLICT_STEPS.length - 1) {
+                                                setConflictStep(conflictStep + 1);
+                                            } else {
+                                                alert('🎉 You completed the conflict resolution process! Great job working through this together.');
+                                                setConflictStep(0);
+                                            }
+                                        }}
+                                        className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
+                                    >
+                                        {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
+                                    </button>
+                                </div>
+                            </div>
+
+                            <button
+                                onClick={() => { setConflictStep(0); setView('hub'); }}
+                                className="w-full py-3 text-slate-400 text-xs font-bold"
+                            >
+                                Exit to Hub
+                            </button>
+                        </div>
+                    )
+                }
+        </div >
+            </main >
+
+    {/* Kid Manager Modal (Parents only) */ }
+{
+    showKidManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                <div className="flex justify-between items-center">
+                    <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
+                    <button
+                        onClick={() => setShowKidManager(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+                    >
+                        ✕
+                    </button>
+                </div>
+
+                {/* Add New Kid Form */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
+                    <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            id="kid-name-input"
+                            placeholder="Kid's Name"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                        />
+                        <div className="grid grid-cols-6 gap-2">
+                            {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
+                                <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
+                                    className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                        <input
+                            type="text"
+                            id="kid-avatar-input"
+                            defaultValue="🧒"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
+                            readOnly
+                        />
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            id="kid-pin-input"
+                            placeholder="4-digit PIN"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                        />
+                        <button
+                            onClick={() => {
+                                const name = document.getElementById('kid-name-input').value.trim();
+                                const avatar = document.getElementById('kid-avatar-input').value || '🧒';
+                                const pin = document.getElementById('kid-pin-input').value;
+                                if (!name) { alert('Please enter a name'); return; }
+                                if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
+                                addKidProfile(name, avatar, pin);
+                                document.getElementById('kid-name-input').value = '';
+                                document.getElementById('kid-avatar-input').value = '🧒';
+                                document.getElementById('kid-pin-input').value = '';
+                            }}
+                            className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
+                        >
+                            ➕ Add Kid
+                        </button>
                     </div>
                 </div>
-            )}
 
-            {/* Navigation (Fixed) */}
-            {
-                view !== 'home' && (
-                    <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
-                        </button>
-                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
-                        </button>
-                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
-                            <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
-                        </button>
-                        <button onClick={() => setView('date')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'date' ? 'text-pink-500 scale-110' : 'text-slate-500'}`}>
-                            <Calendar className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Date</span>
-                        </button>
-                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
-                            <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
-                        </button>
-                    </nav>
-                )
-            }
+                {/* Existing Kids */}
+                {kidProfiles.length > 0 && (
+                    <div className="space-y-2">
+                        <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
+                        {kidProfiles.map(kid => (
+                            <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                    <div>
+                                        <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
+                                        <p className="text-[10px] text-slate-400">PIN: ••••</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => {
+                                            setShowKidManager(false);
+                                            setCurrentKid(kid);
+                                            setView('family_games');
+                                            alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
+                                        }}
+                                        className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
+                                    >
+                                        <Gamepad2 className="w-4 h-4" />
+                                        <span className="text-[10px] font-bold">Play</span>
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
+                                            if (newPin && /^\d{4}$/.test(newPin)) {
+                                                try {
+                                                    await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
+                                                    alert('PIN updated successfully! 🔒');
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    alert('Failed to update PIN.');
+                                                }
+                                            } else if (newPin !== null) {
+                                                alert('Invalid PIN. Must be 4 digits.');
+                                            }
+                                        }}
+                                        className="text-orange-400 hover:text-orange-600 p-2"
+                                        title="Reset PIN"
+                                    >
+                                        <Lock className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => deleteKidProfile(kid.id, kid.name)}
+                                        className="text-red-400 hover:text-red-600 p-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    )
+}
+
+{/* Navigation (Fixed) */ }
+{
+    view !== 'home' && (
+        <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+            <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
+            </button>
+            <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+            </button>
+            <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
+                <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
+            </button>
+            <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
+                <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
+            </button>
+            <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
+            </button>
+        </nav>
+    )
+}
         </div >
     );
 };

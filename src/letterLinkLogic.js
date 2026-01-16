@@ -95,3 +95,88 @@ export const calculateMoveScore = (placedTiles, boardState) => {
 
     return wordPoints * wordMultiplier;
 };
+
+// --- DICTIONARY & WORD FINDING ---
+
+export const validateWord = async (word) => {
+    if (!word || word.length < 2) return true; // generic pass for single letters?
+    try {
+        const res = await fetch(`https://api.dictionaryapi.dev/api/v2/entries/en/${word}`);
+        return res.ok;
+    } catch (err) {
+        console.warn("Dictionary API failed, allowing word:", word);
+        return true; // Fallback if offline
+    }
+};
+
+// Start recursion to find full word from a given index in a direction
+const findWordExtent = (index, delta, board) => {
+    let curr = index;
+    let word = '';
+    // move backwards
+    while (true) {
+        const next = curr - delta;
+        // check boundaries
+        if (delta === 1 && Math.floor(next / 11) !== Math.floor(curr / 11)) break; // row boundary check for horiz
+        if (next < 0 || next >= 121) break;
+
+        const cell = board[next];
+        const char = cell ? (typeof cell === 'string' ? cell : cell.char) : null;
+        if (!char) break;
+        curr = next;
+    }
+
+    const startIdx = curr;
+    // move forwards
+    while (true) {
+        const cell = board[curr];
+        const char = cell ? (typeof cell === 'string' ? cell : cell.char) : null;
+        if (!char) break;
+
+        word += char;
+        const next = curr + delta;
+
+        if (delta === 1 && Math.floor(next / 11) !== Math.floor(curr / 11)) break;
+        if (next < 0 || next >= 121) break;
+        curr = next;
+    }
+
+    return { word, startIdx };
+};
+
+export const getWordsFormed = (placedTiles, board) => {
+    if (placedTiles.length === 0) return [];
+
+    // Create a temporary overlay board to query
+    const tempBoard = [...board];
+    placedTiles.forEach(t => {
+        tempBoard[t.row * 11 + t.col] = { char: t.char };
+    });
+
+    const isRow = placedTiles.length > 1 ? placedTiles[0].row === placedTiles[1].row : true;
+    // If single tile, we need to check both directions.
+    // If multiple, primary axis is defined.
+
+    const words = new Set();
+
+    // 1. Primary Word
+    const firstTile = placedTiles[0];
+    const primaryDelta = isRow ? 1 : 11;
+    const primary = findWordExtent(firstTile.row * 11 + firstTile.col, primaryDelta, tempBoard);
+    if (primary.word.length > 1) words.add(primary.word);
+
+    // 2. Cross Words (for each tile, check perpendicular)
+    const crossDelta = isRow ? 11 : 1;
+    placedTiles.forEach(t => {
+        const cross = findWordExtent(t.row * 11 + t.col, crossDelta, tempBoard);
+        if (cross.word.length > 1) words.add(cross.word);
+    });
+
+    // Special Case: Single tile might form two words (Horiz & Vert)
+    if (placedTiles.length === 1) {
+        const vert = findWordExtent(firstTile.row * 11 + firstTile.col, 11, tempBoard);
+        if (vert.word.length > 1) words.add(vert.word);
+    }
+
+    return Array.from(words);
+};
