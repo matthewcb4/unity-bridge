@@ -16,6 +16,7 @@ import {
     getFirestore, doc, setDoc, getDoc, collection, updateDoc,
     onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
+import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { LETTER_POINTS, getBonusType, calculateMoveScore, validateWord, getWordsFormed } from './letterLinkLogic';
 import { SHIPS, GRID_SIZE, createEmptyGrid, isValidPlacement, placeShipOnGrid, processAttack, checkAllShipsSunk, countRemainingShips, getAttackDisplay, hasPlacedAllShips } from './battleshipLogic';
 
@@ -51,6 +52,8 @@ try {
 } catch (error) {
     console.error("Firebase Initialization Error:", error);
 }
+
+const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 const APP_ID = 'unity-bridge-live';
 
@@ -91,6 +94,45 @@ const ShieldCheckComp = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>
 );
 
+const CalendarView = ({ calendarId, title, darkMode, mode = 'AGENDA' }) => {
+    const bgColor = darkMode ? '0f172a' : 'ffffff';
+    // Google Calendar embed URL with basic customizations
+    // mode can be MONTH, WEEK, or AGENDA
+    const embedUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}&ctz=America%2FChicago&showTitle=0&showNav=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&mode=${mode}&wkst=1&bgcolor=%23${bgColor}`;
+
+    return (
+        <div className={`space-y-3 animate-in fade-in slide-in-from-bottom-4`}>
+            <div className="flex items-center justify-between px-2">
+                <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-rose-500" />
+                    <h3 className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{title}</h3>
+                </div>
+                <a
+                    href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(calendarId)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                    title="Open in Google Calendar"
+                >
+                    <ExternalLink className="w-3 h-3 text-rose-500" />
+                </a>
+            </div>
+            <div className={`rounded-3xl overflow-hidden border shadow-inner ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-rose-100 bg-rose-50/30'} h-[500px] w-full relative`}>
+                <iframe
+                    src={embedUrl}
+                    style={{ border: 0 }}
+                    width="100%"
+                    height="100%"
+                    frameBorder="0"
+                    scrolling="no"
+                    title={title}
+                    className={darkMode ? 'opacity-80' : ''}
+                ></iframe>
+            </div>
+        </div>
+    );
+};
+
 const App = () => {
     // State
     const [user, setUser] = useState(null);
@@ -124,8 +166,8 @@ const App = () => {
     const [vaultStyle, setVaultStyle] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
-    const [inputText, setInputText] = useState('');
-    const [editableOutput, setEditableOutput] = useState('');
+    const [inputText, setInputText] = useState(localStorage.getItem('talk_input_text') || '');
+    const [editableOutput, setEditableOutput] = useState(localStorage.getItem('talk_editable_output') || '');
     const [copiedId, setCopiedId] = useState(null);
     const [journalPrompt, setJournalPrompt] = useState(null);
 
@@ -220,6 +262,7 @@ const App = () => {
     const [familyGameTab, setFamilyGameTab] = useState('lobby'); // 'lobby' | 'scoreboard'
     const [currentFamilyGameId, setCurrentFamilyGameId] = useState(null); // Currently playing family game
     const [talkIntention, setTalkIntention] = useState('compliment'); // compliment, concern, question, update
+    const [showFamilyCalendar, setShowFamilyCalendar] = useState(false);
 
     // Helper: Get current player ID (kid ID or parent role)
     const getCurrentPlayerId = () => currentKid ? currentKid.id : role;
@@ -233,6 +276,15 @@ const App = () => {
         setAppHeight();
         return () => window.removeEventListener('resize', setAppHeight);
     }, []);
+
+    // Persistence for Talk Tab
+    useEffect(() => {
+        localStorage.setItem('talk_input_text', inputText);
+    }, [inputText]);
+
+    useEffect(() => {
+        localStorage.setItem('talk_editable_output', editableOutput);
+    }, [editableOutput]);
 
     // Auth Listener with Error Handling
     useEffect(() => {
@@ -252,6 +304,46 @@ const App = () => {
         });
         return () => unsubscribe();
     }, []);
+
+    // Messaging Permission and Token Handling
+    useEffect(() => {
+        if (!messaging || !user || !coupleCode || !role) return;
+
+        const requestPermission = async () => {
+            try {
+                const permission = await Notification.requestPermission();
+                setNotificationPermission(permission);
+                if (permission === 'granted') {
+                    // Replace with your VAPID key from Firebase Console -> Project Settings -> Cloud Messaging -> Web Push certificates
+                    const currentToken = await getToken(messaging, {
+                        vapidKey: 'BCV_Wv1F5G-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG-Wn2W9fG' // PLACEHOLDER: User needs to provide actual key or I find it
+                    });
+                    if (currentToken) {
+                        console.log('FCM Token retrieved:', currentToken);
+                        // Store token in Firestore
+                        await setDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'fcm_tokens', role), {
+                            token: currentToken,
+                            updatedAt: serverTimestamp(),
+                            userId: user.uid
+                        });
+                    } else {
+                        console.log('No registration token available. Request permission to generate one.');
+                    }
+                }
+            } catch (err) {
+                console.error('An error occurred while retrieving token. ', err);
+            }
+        };
+
+        requestPermission();
+
+        const unsubMessage = onMessage(messaging, (payload) => {
+            console.log('Message received. ', payload);
+            sendNotification(payload.notification.title, payload.notification.body, 'general');
+        });
+
+        return () => unsubMessage();
+    }, [user, coupleCode, role]);
 
     // Data Listeners
     useEffect(() => {
@@ -541,9 +633,17 @@ Provide a comprehensive relationship analysis in this exact JSON format:
 
 Return ONLY valid JSON, no other text.`;
 
-        const result = await callGemini(systemPrompt);
-        if (result) setPulse(result);
         setIsGenerating(false);
+    };
+
+    // Helper: Generate Google Calendar Event URL
+    const generateCalendarUrl = (title, description, details = '') => {
+        const baseUrl = 'https://calendar.google.com/calendar/render?action=TEMPLATE';
+        const params = new URLSearchParams({
+            text: title,
+            details: `${description}\n\n${details}`,
+        });
+        return `${baseUrl}&${params.toString()}`;
     };
 
     const saveToBridge = async (customContent = null) => {
@@ -562,7 +662,7 @@ Return ONLY valid JSON, no other text.`;
         try {
             const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
             await addDoc(collection(db, sharedNamespace, 'bridge_items'), {
-                content, author: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
+                content, author: role, fromRole: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
             });
             setEditableOutput(''); setInputText('');
             alert('Shared to bridge! ✓');
@@ -1946,6 +2046,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     { id: 'affection', label: '💕 Love', short: '💕' },
                                     { id: 'communicate', label: '💬 Talk', short: '💬' },
                                     { id: 'date', label: '📅 Date', short: '📅' },
+                                    { id: 'calendar', label: '🗓️ Cal', short: '🗓️' },
                                     { id: 'journal', label: '📔 Journal', short: '📔' }
                                 ].map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2.5 px-1 text-[9px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${activeTab === tab.id ? 'bg-rose-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
@@ -2113,13 +2214,13 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                     </div>
                                                     <div className="flex gap-2 pt-2 border-t border-slate-100">
                                                         <a
-                                                            href={`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Date Night: ${date.title}`)}&details=${encodeURIComponent(`${date.description}\n\n💡 Tip: ${date.tip}\n\nBudget: ${date.cost}`)}`}
+                                                            href={generateCalendarUrl(`Date Night: ${date.title}`, date.description, `💡 Tip: ${date.tip}\nBudget: ${date.cost}`)}
                                                             target="_blank"
                                                             rel="noopener noreferrer"
-                                                            className="flex-1 py-3 text-[9px] font-bold text-white bg-blue-600 rounded-xl flex items-center justify-center gap-1"
+                                                            className="flex-1 py-3 text-[9px] font-bold text-white bg-blue-600 rounded-xl flex items-center justify-center gap-1 shadow-lg active:scale-95 transition-all"
                                                         >
                                                             <Calendar className="w-3 h-3" />
-                                                            Google Calendar
+                                                            Add to Calendar
                                                         </a>
                                                         <button
                                                             onClick={() => copyToClipboard(`Date Night: ${date.title}\n${date.description}\n\n💡 ${date.tip}\n\nBudget: ${date.cost}`, `cal-${i}`)}
@@ -2133,6 +2234,48 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                             ))}
                                         </div>
                                     )}
+
+                                    {/* Shared Calendar */}
+                                    <CalendarView
+                                        calendarId="NDU5ZWZkNDZlYzVjNzYwNGU2YTg0N2I2OGQxNmEzMzFiOWNhYzhmNzU1MjY1N2E4YjFiMjBmNDQ0OTZmODM2Y0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t"
+                                        title="Couples Calendar"
+                                        darkMode={darkMode}
+                                        mode="AGENDA"
+                                    />
+                                </div>
+                            )}
+
+                            {activeTab === 'calendar' && (
+                                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-50'}`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-3">
+                                            <Calendar className="w-5 h-5 text-rose-500" />
+                                            <h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Shared Calendars</h2>
+                                        </div>
+                                        <button
+                                            onClick={() => window.open(generateCalendarUrl('Quick Event', 'Added from Unity Bridge'), '_blank')}
+                                            className="p-2 bg-rose-600 text-white rounded-xl shadow-lg active:scale-95 transition-all flex items-center gap-2 px-3"
+                                        >
+                                            <Sparkles className="w-4 h-4" />
+                                            <span className="text-[10px] font-black uppercase">Quick Add</span>
+                                        </button>
+                                    </div>
+
+                                    <div className="space-y-8">
+                                        <CalendarView
+                                            calendarId="NDU5ZWZkNDZlYzVjNzYwNGU2YTg0N2I2OGQxNmEzMzFiOWNhYzhmNzU1MjY1N2E4YjFiMjBmNDQ0OTZmODM2Y0Bncm91cC5jYWxlbmRhci5nb29nbGUuY29t"
+                                            title="Couples (Month View)"
+                                            darkMode={darkMode}
+                                            mode="MONTH"
+                                        />
+
+                                        <CalendarView
+                                            calendarId="ZmFtaWx5MDY4MDk0MTIyMTIxNzk0OTA5NTJAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ"
+                                            title="Family (Week View)"
+                                            darkMode={darkMode}
+                                            mode="WEEK"
+                                        />
+                                    </div>
                                 </div>
                             )}
 
@@ -2500,15 +2643,27 @@ Generated by Unity Bridge - Relationship OS`;
                                 ) : (
                                     visibleBridgeItems.map(item => (
                                         <div key={item.id} className={`p-4 rounded-2xl border relative ${item.author === role ? (darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200') : (darkMode ? 'bg-rose-900/20 border-rose-800' : 'bg-rose-50/50 border-rose-200')}`}>
-                                            <div className="flex justify-between mb-1">
-                                                <span className={`text-[9px] font-black uppercase ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span>
-                                                {item.author === role && (
-                                                    <button onClick={() => deleteFromBridge(item.id)} className="text-red-400 hover:text-red-600">
-                                                        <Trash2 className="w-3 h-3" />
+                                            <div className="flex items-start justify-between mb-1">
+                                                <div className="flex flex-col">
+                                                    <span className={`text-[9px] font-black uppercase ${item.author === 'his' ? 'text-blue-500' : 'text-rose-500'}`}>{item.author === 'his' ? husbandName : wifeName}</span>
+                                                    <span className="text-[7px] text-slate-400 font-bold">{item.timestamp?.toDate ? new Date(item.timestamp.toDate()).toLocaleDateString() : ''}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <button
+                                                        onClick={() => window.open(generateCalendarUrl('Bridge Review / Note', item.content, `Shared by: ${item.author === 'his' ? husbandName : wifeName}`), '_blank')}
+                                                        className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-600 border-slate-500 hover:bg-blue-900/40 text-blue-400' : 'bg-white border-slate-200 hover:bg-blue-50 text-blue-600'}`}
+                                                        title="Add to Calendar"
+                                                    >
+                                                        <Calendar className="w-3 h-3" />
                                                     </button>
-                                                )}
+                                                    {item.author === role && (
+                                                        <button onClick={() => deleteFromBridge(item.id)} className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-600 border-slate-500 hover:bg-red-900/40 text-red-400' : 'bg-white border-slate-200 hover:bg-red-50 text-red-400'}`}>
+                                                            <Trash2 className="w-3 h-3" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <p className={`text-sm italic font-medium leading-snug ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>"{item.content}"</p>
+                                            <p className={`text-sm italic font-medium leading-snug ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>"{item.content}"</p>
                                         </div>
                                     ))
                                 )}
@@ -4259,7 +4414,25 @@ Generated by Unity Bridge - Relationship OS`;
                                     <span className="text-2xl">💑</span>
                                     <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Couple Portal</span>
                                 </button>
+                                <button
+                                    onClick={() => setShowFamilyCalendar(!showFamilyCalendar)}
+                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-amber-900/30 border-amber-700' : 'bg-amber-50 border-amber-200'}`}
+                                >
+                                    <span className="text-2xl">📅</span>
+                                    <span className={`text-xs font-bold ${darkMode ? 'text-amber-300' : 'text-amber-600'}`}>{showFamilyCalendar ? 'Hide Cal' : 'Family Cal'}</span>
+                                </button>
                             </div>
+
+                            {/* Family Calendar View */}
+                            {showFamilyCalendar && (
+                                <div className="animate-in fade-in slide-in-from-top-4">
+                                    <CalendarView
+                                        calendarId="ZmFtaWx5MDY4MDk0MTIyMTIxNzk0OTA5NTJAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ"
+                                        title="Family Calendar"
+                                        darkMode={darkMode}
+                                    />
+                                </div>
+                            )}
 
                             {/* Logout */}
                             <button
@@ -4299,6 +4472,27 @@ Generated by Unity Bridge - Relationship OS`;
 
                             {familyGameTab === 'lobby' && (
                                 <>
+                                    {/* Family Calendar Toggle */}
+                                    <button
+                                        onClick={() => setShowFamilyCalendar(!showFamilyCalendar)}
+                                        className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${darkMode ? 'bg-amber-900/30 border-amber-700 text-amber-300' : 'bg-amber-50 border-amber-200 text-amber-700'}`}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <Calendar className="w-5 h-5" />
+                                            <span className="text-sm font-bold">Family Calendar</span>
+                                        </div>
+                                        <span className="text-xs font-black uppercase">{showFamilyCalendar ? 'Hide' : 'View'}</span>
+                                    </button>
+
+                                    {showFamilyCalendar && (
+                                        <div className="animate-in fade-in slide-in-from-top-2">
+                                            <CalendarView
+                                                calendarId="ZmFtaWx5MDY4MDk0MTIyMTIxNzk0OTA5NTJAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ"
+                                                title="Family Events"
+                                                darkMode={darkMode}
+                                            />
+                                        </div>
+                                    )}
                                     {/* Active Games */}
                                     {familyActiveGames.length > 0 && (
                                         <div className="space-y-2">

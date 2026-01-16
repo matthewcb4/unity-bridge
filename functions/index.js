@@ -1,5 +1,8 @@
 const functions = require("firebase-functions");
+const admin = require("firebase-admin");
 const https = require("https");
+
+admin.initializeApp();
 
 // API key stored securely in Firebase environment config
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || functions.config().gemini?.key;
@@ -73,3 +76,74 @@ exports.callGemini = functions.https.onRequest((req, res) => {
     apiReq.write(postData);
     apiReq.end();
 });
+
+// Trigger for Game Moves
+exports.onGameUpdate = functions.firestore
+    .document("couples/{coupleCode}/active_games/{gameId}")
+    .onUpdate(async (change, context) => {
+        const newData = change.after.data();
+        const oldData = change.before.data();
+        const { coupleCode } = context.params;
+
+        // Only notify if the turn has changed
+        if (newData.currentTurn === oldData.currentTurn) return null;
+
+        const recipientRole = newData.currentTurn; // 'his' or 'hers'
+        const senderRole = recipientRole === 'his' ? 'hers' : 'his';
+
+        // Get recipient token
+        const tokenDoc = await admin.firestore().doc(`couples/${coupleCode}/fcm_tokens/${recipientRole}`).get();
+        if (!tokenDoc.exists) return null;
+
+        const token = tokenDoc.data().token;
+        const gameType = newData.type === 'letter_link' ? 'Letter Link' : 'Word Scramble';
+
+        const message = {
+            notification: {
+                title: "Your Turn!",
+                body: `Your partner made a move in ${gameType}. It's your turn now!`
+            },
+            token: token
+        };
+
+        try {
+            await admin.messaging().send(message);
+            console.log(`Notification sent for game ${context.params.gameId}`);
+        } catch (error) {
+            console.error("Error sending notification:", error);
+        }
+        return null;
+    });
+
+// Trigger for Bridge Messages
+exports.onBridgeMessage = functions.firestore
+    .document("couples/{coupleCode}/bridge_items/{itemId}")
+    .onCreate(async (snapshot, context) => {
+        const data = snapshot.data();
+        const { coupleCode } = context.params;
+
+        const senderRole = data.fromRole; // Assuming we add this to the bridge item
+        const recipientRole = senderRole === 'his' ? 'hers' : 'his';
+
+        // Get recipient token
+        const tokenDoc = await admin.firestore().doc(`couples/${coupleCode}/fcm_tokens/${recipientRole}`).get();
+        if (!tokenDoc.exists) return null;
+
+        const token = tokenDoc.data().token;
+
+        const message = {
+            notification: {
+                title: "New Bridge Message",
+                body: data.content.length > 50 ? data.content.substring(0, 47) + "..." : data.content
+            },
+            token: token
+        };
+
+        try {
+            await admin.messaging().send(message);
+            console.log(`Notification sent for bridge message ${context.params.itemId}`);
+        } catch (error) {
+            console.error("Error sending notification:", error);
+        }
+        return null;
+    });
