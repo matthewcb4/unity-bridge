@@ -645,6 +645,12 @@ Provide a comprehensive relationship analysis in this exact JSON format:
 
 Return ONLY valid JSON, no other text.`;
 
+        const result = await callGemini(systemPrompt);
+        if (result) {
+            setPulse(result);
+        } else {
+            alert("Failed to generate relationship analysis. Please try again in a moment.");
+        }
         setIsGenerating(false);
     };
 
