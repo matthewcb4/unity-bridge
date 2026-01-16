@@ -1931,11 +1931,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     { id: 'affection', label: '💕 Love', short: '💕' },
                                     { id: 'communicate', label: '💬 Talk', short: '💬' },
                                     { id: 'date', label: '📅 Date', short: '📅' },
-                                    { id: 'journal', label: '📔 Journal', short: '📔' },
-                                    { id: 'settings', label: '⚙️', short: '⚙️' }
+                                    { id: 'journal', label: '📔 Journal', short: '📔' }
                                 ].map(tab => (
                                     <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`flex-1 py-2.5 px-1 text-[9px] font-black uppercase rounded-xl transition-all flex items-center justify-center gap-1 ${activeTab === tab.id ? 'bg-rose-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                                        {tab.id === 'settings' ? tab.label : tab.label}
+                                        {tab.label}
                                     </button>
                                 ))}
                             </div>
@@ -2284,156 +2283,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 </div>
                             )}
 
-                            {/* NEW: Settings Tab */}
-                            {activeTab === 'settings' && (
-                                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <Settings className="w-5 h-5 text-slate-500" />
-                                        <h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Settings & Stats</h2>
-                                    </div>
 
-                                    {/* Anniversary Date */}
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-pink-500 uppercase ml-2 tracking-widest flex items-center gap-2">
-                                            <Heart className="w-3 h-3" /> Anniversary Date
-                                        </label>
-                                        <input
-                                            type="date"
-                                            value={anniversaryDate}
-                                            onChange={(e) => saveAnniversary(e.target.value)}
-                                            className={`w-full p-4 rounded-2xl text-sm border outline-none text-center ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-pink-50 border-pink-100 focus:border-pink-300'}`}
-                                        />
-                                        {getDaysTogether() !== null && (
-                                            <div className="text-center py-4 bg-gradient-to-r from-pink-500 to-rose-500 rounded-2xl">
-                                                <p className="text-4xl font-black text-white">{getDaysTogether().toLocaleString()}</p>
-                                                <p className="text-[10px] font-bold text-pink-100 uppercase">Days Together 💕</p>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Dark Mode Toggle */}
-                                    <div className={`flex items-center justify-between p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
-                                        <div className="flex items-center gap-3">
-                                            <Moon className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-slate-500'}`} />
-                                            <span className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Dark Mode</span>
-                                        </div>
-                                        <button
-                                            onClick={() => { const newVal = !darkMode; setDarkMode(newVal); localStorage.setItem('dark_mode', newVal.toString()); }}
-                                            className={`w-14 h-7 rounded-full transition-all ${darkMode ? 'bg-yellow-500' : 'bg-slate-300'} relative`}
-                                        >
-                                            <div className={`w-6 h-6 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-7' : 'left-0.5'}`} />
-                                        </button>
-                                    </div>
-
-                                    {/* Pet Names */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>💕 His Pet Name</label>
-                                            <input
-                                                value={husbandPetName}
-                                                onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
-                                                placeholder="e.g. honey, babe"
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>💕 Her Pet Name</label>
-                                            <input
-                                                value={wifePetName}
-                                                onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
-                                                placeholder="e.g. sweetie, love"
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Love Languages */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-blue-400 uppercase ml-1">💙 His Language</label>
-                                            <select
-                                                value={hisLoveLanguage}
-                                                onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
-                                            >
-                                                <option>Physical Touch</option>
-                                                <option>Words of Affirmation</option>
-                                                <option>Quality Time</option>
-                                                <option>Acts of Service</option>
-                                                <option>Receiving Gifts</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-rose-400 uppercase ml-1">💗 Her Language</label>
-                                            <select
-                                                value={herLoveLanguage}
-                                                onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
-                                            >
-                                                <option>Words of Affirmation</option>
-                                                <option>Physical Touch</option>
-                                                <option>Quality Time</option>
-                                                <option>Acts of Service</option>
-                                                <option>Receiving Gifts</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    {/* Family Management */}
-                                    <button
-                                        onClick={() => setShowKidManager(true)}
-                                        className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-purple-900/50 text-purple-400 border border-purple-700' : 'bg-purple-50 text-purple-600 border border-purple-200'}`}
-                                    >
-                                        <Users className="w-4 h-4" />
-                                        👨‍👩‍👧‍👦 Manage Kids
-                                    </button>
-
-                                    {/* Change PIN */}
-                                    <button
-                                        onClick={() => {
-                                            const newPin = prompt('Enter new 4-digit PIN:');
-                                            if (newPin && /^\d{4}$/.test(newPin)) {
-                                                localStorage.setItem(`${role}_pin`, newPin);
-                                                alert('PIN updated successfully!');
-                                            } else if (newPin !== null) {
-                                                alert('Please enter exactly 4 digits.');
-                                            }
-                                        }}
-                                        className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}
-                                    >
-                                        <Lock className="w-4 h-4" />
-                                        🔐 Change My PIN
-                                    </button>
-
-                                    {/* Milestones */}
-                                    <div className="space-y-3">
-                                        <p className="text-[10px] font-black text-amber-500 uppercase ml-2 tracking-widest flex items-center gap-2">
-                                            <Trophy className="w-3 h-3" /> Milestones Earned
-                                        </p>
-                                        {checkMilestones().length > 0 ? (
-                                            <div className="flex flex-wrap gap-2">
-                                                {checkMilestones().map(m => (
-                                                    <span key={m.id} className={`px-4 py-2 border rounded-2xl text-xs font-bold ${darkMode ? 'bg-amber-900/30 border-amber-700 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>
-                                                        {m.emoji} {m.label}
-                                                    </span>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <p className={`text-sm italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Keep journaling and sharing to earn badges!</p>
-                                        )}
-                                    </div>
-
-                                    {/* Export Button */}
-                                    <button
-                                        onClick={exportJournalData}
-                                        disabled={journalItems.length === 0}
-                                        className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-green-900/50 text-green-400 border border-green-700' : 'bg-green-50 text-green-600 border border-green-200'} disabled:opacity-50`}
-                                    >
-                                        <Save className="w-4 h-4" />
-                                        Export Journal Data
-                                    </button>
-                                </div>
-                            )}
                         </div>
                     )}
 
@@ -3622,120 +3472,239 @@ Generated by Unity Bridge - Relationship OS`;
                     )}
 
                     {
-                        view === 'nudge' && (
-                            <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                                <div className="text-center space-y-2 pt-2">
-                                    <div className="w-14 h-14 bg-rose-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg"><Bell className="w-7 h-7 text-rose-600" /></div>
-                                    <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Nudge Center</h2>
-                                    <p className="text-xs text-slate-400">Set daily reminders to nurture your connection</p>
+                        <div className="space-y-4 pt-2">
+                            {/* Header */}
+                            <div className="text-center space-y-2">
+                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-amber-900 border-amber-700' : 'bg-amber-100 border-white'}`}>
+                                    <Bell className="w-7 h-7 text-amber-600" />
                                 </div>
+                                <h2 className={`text-2xl font-black tracking-tighter italic ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Nudge & Settings</h2>
+                                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Manage reminders and your connection settings</p>
+                            </div>
 
-                                {/* Notification Settings (Moved to Top) */}
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-rose-100 p-6 space-y-4">
-                                    <div className="flex items-center gap-2 justify-center">
-                                        <Bell className="w-5 h-5 text-rose-500" />
-                                        <h3 className="text-sm font-black text-slate-800 uppercase">Notifications</h3>
+                            {/* Sub Tabs for Nudge */}
+                            <div className={`flex gap-1 p-1.5 rounded-2xl border shadow-sm sticky top-0 z-10 ${darkMode ? 'bg-slate-800/90 border-slate-700 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
+                                {[
+                                    { id: 'reminders', label: '🔔 Nudges' },
+                                    { id: 'settings', label: '⚙️ Settings' }
+                                ].map(tab => (
+                                    <button
+                                        key={tab.id}
+                                        onClick={() => setActiveTab(tab.id)}
+                                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === tab.id ? 'bg-amber-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
+                                    >
+                                        {tab.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {activeTab === 'reminders' && (
+                                <div className="space-y-4 animate-in fade-in">
+                                    {/* Notification Settings */}
+                                    <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
+                                        <div className="flex items-center gap-2 justify-center">
+                                            <Bell className="w-5 h-5 text-rose-500" />
+                                            <h3 className={`text-sm font-black uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Notifications</h3>
+                                        </div>
+
+                                        {notificationPermission !== 'granted' ? (
+                                            <div className="text-center space-y-3">
+                                                <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
+                                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
+                                                    <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
+                                                    <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
+                                                    <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
+                                                        <li>Tap the <strong>Share</strong> button</li>
+                                                        <li>Select <strong>Add to Home Screen</strong></li>
+                                                        <li>Open from home screen</li>
+                                                    </ol>
+                                                </div>
+                                                <button onClick={requestNotificationPermission} className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all">
+                                                    🔔 Enable Notifications
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
+                                                {[
+                                                    { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn' },
+                                                    { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from partner' },
+                                                    { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for date nights' },
+                                                    { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a message' }
+                                                ].map(pref => (
+                                                    <div key={pref.key} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className="text-xl">{pref.emoji}</span>
+                                                            <div>
+                                                                <p className={`text-xs font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{pref.label}</p>
+                                                                <p className="text-[10px] text-slate-400">{pref.desc}</p>
+                                                            </div>
+                                                        </div>
+                                                        <button onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])} className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}>
+                                                            <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
                                     </div>
 
-                                    {notificationPermission !== 'granted' ? (
-                                        <div className="text-center space-y-3">
-                                            <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
-
-                                            {/* iOS specific hint */}
-                                            <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
-                                                <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
-                                                <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
-                                                <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
-                                                    <li>Tap the <strong>Share</strong> button (box with arrow)</li>
-                                                    <li>Select <strong>Add to Home Screen</strong></li>
-                                                    <li>Open the app from your home screen</li>
-                                                </ol>
-                                            </div>
-
-                                            <button
-                                                onClick={requestNotificationPermission}
-                                                className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
-                                            >
-                                                🔔 Enable Notifications
-                                            </button>
-                                            {notificationPermission === 'denied' && (
-                                                <p className="text-xs text-red-500">Notifications are blocked. Check your browser settings to enable them.</p>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
-
-                                            {[
-                                                { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn to guess' },
-                                                { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from your partner' },
-                                                { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for your date nights' },
-                                                { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a loving message' }
-                                            ].map(pref => (
-                                                <div key={pref.key} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                    <div className="flex items-center gap-3">
-                                                        <span className="text-xl">{pref.emoji}</span>
-                                                        <div>
-                                                            <p className="text-xs font-bold text-slate-700">{pref.label}</p>
-                                                            <p className="text-xs text-slate-400">{pref.desc}</p>
+                                    {/* Daily Reminders */}
+                                    <div className="space-y-3">
+                                        {['Morning', 'Lunch', 'Evening'].map(time => {
+                                            const nudge = NUDGE_DATA[time];
+                                            const NudgeIcon = nudge.icon;
+                                            const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
+                                            return (
+                                                <div key={time} className={`p-4 border rounded-2xl shadow-lg space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                                                    <div className="flex items-start gap-3">
+                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-900/30' : 'bg-rose-50'}`}>
+                                                            <NudgeIcon className="w-5 h-5 text-rose-600" />
+                                                        </div>
+                                                        <div className="flex-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <p className={`text-lg font-black tracking-tight ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{time} Check-in</p>
+                                                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${darkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-400'}`}>{nudge.time}</span>
+                                                            </div>
+                                                            <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
+                                                            <p className={`text-xs mt-1 italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>"{nudge.suggestion}"</p>
                                                         </div>
                                                     </div>
-                                                    <button
-                                                        onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])}
-                                                        className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}
-                                                    >
-                                                        <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
-                                                    </button>
+                                                    <div className="flex gap-2 pt-2 border-t border-slate-50">
+                                                        <button onClick={() => window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}`)}&recur=RRULE:FREQ=DAILY`, '_blank')} className={`flex-1 p-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                                                            <Calendar className="w-3 h-3" /> Go-Cal
+                                                        </button>
+                                                        <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
+                                                            {copiedId === `n-${time}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                                            {copiedId === `n-${time}` ? 'Copied' : 'iPhone'}
+                                                        </button>
+                                                    </div>
                                                 </div>
-                                            ))}
-
-                                            <button
-                                                onClick={() => sendNotification('Test Notification 💕', 'This is a test from Unity Bridge!', 'general')}
-                                                className="w-full py-3 bg-slate-100 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-200 transition-all"
-                                            >
-                                                🔔 Send Test Notification
-                                            </button>
-                                        </div>
-                                    )}
+                                            );
+                                        })}
+                                    </div>
                                 </div>
+                            )}
 
-                                <div className="space-y-3">
-                                    {['Morning', 'Lunch', 'Evening'].map(time => {
-                                        const nudge = NUDGE_DATA[time];
-                                        const NudgeIcon = nudge.icon;
-                                        const calendarUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}\n\nOpen Unity Bridge to connect with your spouse.`)}&recur=RRULE:FREQ=DAILY`;
-                                        const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
-                                        return (
-                                            <div key={time} className="p-4 bg-white border border-slate-100 rounded-2xl shadow-lg space-y-3">
-                                                <div className="flex items-start gap-3">
-                                                    <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center shrink-0">
-                                                        <NudgeIcon className="w-5 h-5 text-rose-600" />
-                                                    </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex items-center gap-2">
-                                                            <p className="text-lg font-black text-slate-800 tracking-tight">{time} Check-in</p>
-                                                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded-full">{nudge.time}</span>
-                                                        </div>
-                                                        <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
-                                                        <p className="text-xs text-slate-500 mt-1 italic">"{nudge.suggestion}"</p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex gap-2 pt-2 border-t border-slate-50">
-                                                    <button onClick={() => window.open(calendarUrl, '_blank')} className="flex-1 p-3 bg-blue-50 hover:bg-blue-100 rounded-xl text-[10px] font-black uppercase text-blue-600 flex items-center justify-center gap-2 transition-all">
-                                                        <Calendar className="w-4 h-4" />
-                                                        Add to Google
-                                                    </button>
-                                                    <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
-                                                        {copiedId === `n-${time}` ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                                        {copiedId === `n-${time}` ? 'Copied!' : 'Copy for iPhone'}
-                                                    </button>
-                                                </div>
+                            {activeTab === 'settings' && (
+                                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 animate-in fade-in ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <Settings className="w-5 h-5 text-slate-500" />
+                                        <h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Settings & Stats</h2>
+                                    </div>
+
+                                    {/* Anniversary Date */}
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-pink-500 uppercase ml-2 tracking-widest flex items-center gap-2">
+                                            <Heart className="w-3 h-3" /> Anniversary Date
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={anniversaryDate}
+                                            onChange={(e) => saveAnniversary(e.target.value)}
+                                            className={`w-full p-4 rounded-2xl text-sm border outline-none text-center ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-pink-50 border-pink-100 focus:border-pink-300'}`}
+                                        />
+                                        {getDaysTogether() !== null && (
+                                            <div className="text-center py-4 bg-gradient-to-r from-pink-500 to-rose-500 rounded-2xl">
+                                                <p className="text-4xl font-black text-white">{getDaysTogether().toLocaleString()}</p>
+                                                <p className="text-[10px] font-bold text-pink-100 uppercase">Days Together 💕</p>
                                             </div>
-                                        );
-                                    })}
-                                </div>
+                                        )}
+                                    </div>
 
-                            </div>
+                                    {/* Dark Mode Toggle */}
+                                    <div className={`flex items-center justify-between p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                        <div className="flex items-center gap-3">
+                                            <Moon className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-slate-500'}`} />
+                                            <span className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Dark Mode</span>
+                                        </div>
+                                        <button
+                                            onClick={() => { const newVal = !darkMode; setDarkMode(newVal); localStorage.setItem('dark_mode', newVal.toString()); }}
+                                            className={`w-14 h-7 rounded-full transition-all ${darkMode ? 'bg-yellow-500' : 'bg-slate-300'} relative`}
+                                        >
+                                            <div className={`w-6 h-6 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-7' : 'left-0.5'}`} />
+                                        </button>
+                                    </div>
+
+                                    {/* Pet Names */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>His Pet Name</label>
+                                            <input
+                                                value={husbandPetName}
+                                                onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
+                                                placeholder="honey"
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>Her Pet Name</label>
+                                            <input
+                                                value={wifePetName}
+                                                onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
+                                                placeholder="sweetie"
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Love Languages */}
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-blue-400 uppercase ml-1">His Language</label>
+                                            <select
+                                                value={hisLoveLanguage}
+                                                onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
+                                            >
+                                                <option>Physical Touch</option>
+                                                <option>Words of Affirmation</option>
+                                                <option>Quality Time</option>
+                                                <option>Acts of Service</option>
+                                                <option>Receiving Gifts</option>
+                                            </select>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-[9px] font-black text-rose-400 uppercase ml-1">Her Language</label>
+                                            <select
+                                                value={herLoveLanguage}
+                                                onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
+                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
+                                            >
+                                                <option>Words of Affirmation</option>
+                                                <option>Physical Touch</option>
+                                                <option>Quality Time</option>
+                                                <option>Acts of Service</option>
+                                                <option>Receiving Gifts</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <button onClick={() => setShowKidManager(true)} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-purple-900/50 text-purple-400 border border-purple-700' : 'bg-purple-50 text-purple-600 border border-purple-200'}`}>
+                                        <Users className="w-4 h-4" /> Manage Kids
+                                    </button>
+
+                                    <button onClick={() => { const newPin = prompt('New 4-digit PIN:'); if (newPin && /^\d{4}$/.test(newPin)) { localStorage.setItem(`${role}_pin`, newPin); alert('PIN updated!'); } }} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                        <Lock className="w-4 h-4" /> Change PIN
+                                    </button>
+
+                                    {/* Milestones */}
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] font-black text-amber-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Trophy className="w-3 h-3" /> Milestones</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {checkMilestones().length > 0 ? checkMilestones().map(m => (
+                                                <span key={m.id} className={`px-4 py-2 border rounded-2xl text-xs font-bold ${darkMode ? 'bg-amber-900/30 border-amber-700 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{m.emoji} {m.label}</span>
+                                            )) : <p className="text-xs italic text-slate-400">Keep sharing to earn badges!</p>}
+                                        </div>
+                                    </div>
+
+                                    <button onClick={exportJournalData} disabled={journalItems.length === 0} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-green-900/50 text-green-400 border border-green-700' : 'bg-green-50 text-green-600 border border-green-200'} disabled:opacity-50`}>
+                                        <Save className="w-4 h-4" /> Export Data
+                                    </button>
+                                </div>
+                            )}
+
+                        </div>
                         )
                     }
 
@@ -5220,7 +5189,7 @@ Generated by Unity Bridge - Relationship OS`;
             {
                 view !== 'home' && (
                     <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => setView('hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <button onClick={() => { setView('hub'); if (activeTab === 'settings' || activeTab === 'reminders') setActiveTab('affection'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
                             <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
                         </button>
                         <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
@@ -5232,7 +5201,7 @@ Generated by Unity Bridge - Relationship OS`;
                         <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
                             <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
                         </button>
-                        <button onClick={() => setView('nudge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                        <button onClick={() => { setView('nudge'); if (activeTab !== 'settings' && activeTab !== 'reminders') setActiveTab('reminders'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
                             <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
                         </button>
                     </nav>
