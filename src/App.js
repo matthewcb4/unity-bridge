@@ -219,6 +219,7 @@ const App = () => {
     const [selectedOpponent, setSelectedOpponent] = useState(null); // Selected opponent for new game
     const [familyGameTab, setFamilyGameTab] = useState('lobby'); // 'lobby' | 'scoreboard'
     const [currentFamilyGameId, setCurrentFamilyGameId] = useState(null); // Currently playing family game
+    const [talkIntention, setTalkIntention] = useState('compliment'); // compliment, concern, question, update
 
     // Helper: Get current player ID (kid ID or parent role)
     const getCurrentPlayerId = () => currentKid ? currentKid.id : role;
@@ -433,7 +434,21 @@ Return ONLY JSON: { "primary": { "${cats.primary[0]}": ["msg1", "msg2", "msg3"],
     const translateMessage = async () => {
         if (!inputText) return;
         setIsGenerating(true);
-        const systemPrompt = `Marriage counselor. Convert frustration: "${inputText}" into a soft I-Statement. JSON { "translation": "..." }`;
+
+        const intentionContext = {
+            compliment: "Heartfelt and specific appraisal/compliment.",
+            concern: "Convert this frustration/concern into a soft 'I-Statement' focusing on feelings and needs.",
+            question: "Curious, open-ended question that encourages connection and doesn't feel like an interrogation.",
+            update: "Warm, engaging update or information share."
+        };
+
+        const systemPrompt = `You are a relationship counselor helping a couple communicate better.
+Goal: ${talkIntention.toUpperCase()}
+Context: ${intentionContext[talkIntention]}
+Input: "${inputText}"
+
+Convert the input into a high-quality, emotionally intelligent message that fosters connection and understanding.
+Return JSON: { "translation": "..." }`;
         const result = await callGemini(systemPrompt);
         if (result) setEditableOutput(result.translation);
         setIsGenerating(false);
@@ -1995,8 +2010,28 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             {activeTab === 'communicate' && (
                                 <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-50'}`}>
                                     <div className="flex items-center gap-3"><MessageCircle className="w-5 h-5 text-blue-500" /><h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Communicate Better</h2></div>
-                                    <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder="Draft your thought..." className={`w-full p-5 border rounded-3xl text-sm min-h-[140px] outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-orange-500/30' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-4 focus:ring-orange-50'}`} />
-                                    <button onClick={translateMessage} disabled={isGenerating || !inputText} className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl shadow-xl flex items-center justify-center gap-2">
+                                    <div className="space-y-3">
+                                        <p className="text-[10px] font-black text-blue-500 uppercase ml-2 tracking-widest">Select Your Goal</p>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {[
+                                                { id: 'compliment', label: 'Compliment', emoji: '🌸' },
+                                                { id: 'concern', label: 'Concern', emoji: '🗣️' },
+                                                { id: 'question', label: 'Question', emoji: '❓' },
+                                                { id: 'update', label: 'Update', emoji: '📢' }
+                                            ].map(item => (
+                                                <button
+                                                    key={item.id}
+                                                    onClick={() => setTalkIntention(item.id)}
+                                                    className={`p-3 rounded-2xl border text-[10px] font-bold transition-all flex items-center justify-center gap-2 ${talkIntention === item.id ? (darkMode ? 'bg-blue-900 border-blue-500 text-blue-200 shadow-lg scale-105' : 'bg-blue-50 border-blue-200 text-blue-700 shadow-md scale-105') : (darkMode ? 'bg-slate-700 border-slate-600 text-slate-400 opacity-60' : 'bg-white border-slate-100 text-slate-500 opacity-60')}`}
+                                                >
+                                                    <span>{item.emoji}</span> {item.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <textarea value={inputText} onChange={(e) => setInputText(e.target.value)} placeholder={`Draft your ${talkIntention}...`} className={`w-full p-5 border rounded-3xl text-sm min-h-[140px] outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200 placeholder-slate-500 focus:ring-2 focus:ring-blue-500/30' : 'bg-slate-50 border-slate-200 text-slate-800 focus:ring-4 focus:ring-blue-50'}`} />
+                                    <button onClick={translateMessage} disabled={isGenerating || !inputText} className="w-full bg-slate-900 text-white font-black py-4 rounded-3xl shadow-xl flex items-center justify-center gap-2 hover:bg-slate-800 transition-all">
                                         {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : "TRANSLATE"}
                                     </button>
                                     {editableOutput && (
@@ -2006,7 +2041,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
                                                 <button onClick={() => saveToJournal()} className={`font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2 border ${darkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>PRIVATE</button>
-                                                <button onClick={saveToBridge} className="bg-green-600 text-white font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2">SHARE</button>
+                                                <button onClick={() => saveToBridge()} className="bg-green-600 text-white font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2">SHARE</button>
                                             </div>
                                         </div>
                                     )}
