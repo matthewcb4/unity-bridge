@@ -94,7 +94,8 @@ const ShieldCheckComp = (props) => (
     <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>
 );
 
-const CalendarView = ({ calendarId, title, darkMode, mode = 'AGENDA' }) => {
+const CalendarView = ({ calendarId, title, darkMode, mode: initialMode = 'AGENDA' }) => {
+    const [mode, setMode] = useState(initialMode);
     const bgColor = darkMode ? '0f172a' : 'ffffff';
     // Google Calendar embed URL with basic customizations
     // mode can be MONTH, WEEK, or AGENDA
@@ -107,15 +108,26 @@ const CalendarView = ({ calendarId, title, darkMode, mode = 'AGENDA' }) => {
                     <Calendar className="w-4 h-4 text-rose-500" />
                     <h3 className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{title}</h3>
                 </div>
-                <a
-                    href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(calendarId)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
-                    title="Open in Google Calendar"
-                >
-                    <ExternalLink className="w-3 h-3 text-rose-500" />
-                </a>
+                <div className="flex items-center gap-2">
+                    <select
+                        value={mode}
+                        onChange={(e) => setMode(e.target.value)}
+                        className={`text-[9px] font-black uppercase border rounded-lg px-2 py-1 outline-none transition-all ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}
+                    >
+                        <option value="MONTH">Month</option>
+                        <option value="WEEK">Week</option>
+                        <option value="AGENDA">Agenda</option>
+                    </select>
+                    <a
+                        href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(calendarId)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
+                        title="Open in Google Calendar"
+                    >
+                        <ExternalLink className="w-3 h-3 text-rose-500" />
+                    </a>
+                </div>
             </div>
             <div className={`rounded-3xl overflow-hidden border shadow-inner ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-rose-100 bg-rose-50/30'} h-[500px] w-full relative`}>
                 <iframe
