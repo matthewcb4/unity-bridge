@@ -152,7 +152,8 @@ const App = () => {
     // Auto-redirect to hub if user previously selected a role and has couple code
     const savedRole = localStorage.getItem('user_role');
     const savedCode = localStorage.getItem('couple_code');
-    const [view, setViewState] = useState(localStorage.getItem('unity_bridge_view') || (savedRole && savedCode ? 'hub' : 'home'));
+    const savedKidId = localStorage.getItem('current_kid_id');
+    const [view, setViewState] = useState(localStorage.getItem('unity_bridge_view') || (savedRole && savedCode ? 'hub' : (savedKidId && savedCode ? 'kid_hub' : 'home')));
 
     const setView = (newView) => {
         setViewState(newView);
@@ -358,7 +359,56 @@ const App = () => {
         return () => unsubMessage();
     }, [user, coupleCode, role]);
 
-    // Data Listeners
+    // Basic Family Data Listeners (Don't need role)
+    useEffect(() => {
+        if (!user || !db || !coupleCode) return;
+
+        // Listen for shared settings (love languages, names) - both partners can edit
+        const settingsRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings');
+        const unsubSettings = onSnapshot(settingsRef, (snap) => {
+            if (snap.exists()) {
+                const data = snap.data();
+                if (data.hisLoveLanguage) setHisLoveLanguage(data.hisLoveLanguage);
+                if (data.herLoveLanguage) setHerLoveLanguage(data.herLoveLanguage);
+                if (data.husbandName) setHusbandName(data.husbandName);
+                if (data.wifeName) setWifeName(data.wifeName);
+            }
+        }, (err) => console.error("Settings Sync Error:", err));
+
+        // Listen for kid profiles (Family Bridge)
+        const kidsRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids');
+        const unsubKids = onSnapshot(kidsRef, (snap) => {
+            const kids = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setKidProfiles(kids.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
+
+            // Restore current kid if ID is in localStorage
+            if (savedKidId && !currentKid) {
+                const restoredKid = kids.find(k => k.id === savedKidId);
+                if (restoredKid) {
+                    setCurrentKid(restoredKid);
+                }
+            }
+        }, (err) => console.error("Kids Sync Error:", err));
+
+        // Listen for family games (Family Games Hub) - Needed for indicator on Dashboard even without role? 
+        // Actually, kids need this too.
+        const familyGamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
+        const unsubFamilyGames = onSnapshot(familyGamesRef, (snap) => {
+            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setFamilyActiveGames(games.filter(g => g.phase !== 'completed').sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
+        }, (err) => console.error("Family Games Sync Error:", err));
+
+        // Listen for family game history
+        const familyHistoryRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
+        const unsubFamilyHistory = onSnapshot(familyHistoryRef, (snap) => {
+            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setFamilyGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
+        }, (err) => console.error("Family History Error:", err));
+
+        return () => { unsubSettings(); unsubKids(); unsubFamilyGames(); unsubFamilyHistory(); };
+    }, [user, coupleCode]);
+
+    // Role-Specific Data Listeners
     useEffect(() => {
         if (!user || !role || !db || !coupleCode) return;
 
@@ -377,18 +427,6 @@ const App = () => {
             const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setJournalItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
         }, (err) => console.error("Journal Sync Error:", err));
-
-        // Listen for shared settings (love languages, names) - both partners can edit
-        const settingsRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings');
-        const unsubSettings = onSnapshot(settingsRef, (snap) => {
-            if (snap.exists()) {
-                const data = snap.data();
-                if (data.hisLoveLanguage) setHisLoveLanguage(data.hisLoveLanguage);
-                if (data.herLoveLanguage) setHerLoveLanguage(data.herLoveLanguage);
-                if (data.husbandName) setHusbandName(data.husbandName);
-                if (data.wifeName) setWifeName(data.wifeName);
-            }
-        }, (err) => console.error("Settings Sync Error:", err));
 
         // Listen for active games (Concept: Lobby)
         const activeGamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
@@ -422,31 +460,10 @@ const App = () => {
             setGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
         }, (err) => console.error("Game History Error:", err));
 
-        // Listen for kid profiles (Family Bridge)
-        const kidsRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids');
-        const unsubKids = onSnapshot(kidsRef, (snap) => {
-            const kids = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setKidProfiles(kids.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
-        }, (err) => console.error("Kids Sync Error:", err));
-
-        // Listen for family games (Family Games Hub)
-        const familyGamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
-        const unsubFamilyGames = onSnapshot(familyGamesRef, (snap) => {
-            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setFamilyActiveGames(games.filter(g => g.phase !== 'completed').sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-        }, (err) => console.error("Family Games Sync Error:", err));
-
-        // Listen for family game history
-        const familyHistoryRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-        const unsubFamilyHistory = onSnapshot(familyHistoryRef, (snap) => {
-            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setFamilyGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
-        }, (err) => console.error("Family History Error:", err));
-
         // Initial content load
         refreshVaults();
 
-        return () => { unsubBridge(); unsubJournal(); unsubSettings(); unsubGames(); unsubHistory(); unsubKids(); unsubFamilyGames(); unsubFamilyHistory(); };
+        return () => { unsubBridge(); unsubJournal(); unsubGames(); unsubHistory(); };
     }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
