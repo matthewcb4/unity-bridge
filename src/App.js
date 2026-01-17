@@ -150,13 +150,14 @@ const App = () => {
     const [user, setUser] = useState(null);
     const [authError, setAuthError] = useState(null);
     // Standard app logic (hold in memory, not persistent across reloads to avoid conflicts)
-    const [view, setViewState] = useState('home');
+    const [view, setViewState] = useState(localStorage.getItem('current_view') || 'home');
 
     const setView = (newView) => {
         setViewState(newView);
+        localStorage.setItem('current_view', newView);
     };
 
-    const [role, setRole] = useState(null);
+    const [role, setRole] = useState(localStorage.getItem('user_role'));
     const [activeTab, setActiveTab] = useState('affection');
     const [affectionType, setAffectionType] = useState('primary');
 
@@ -164,7 +165,10 @@ const App = () => {
     const [husbandName, setHusbandName] = useState('');
     const [wifePetName, setWifePetName] = useState('');
     const [husbandPetName, setHusbandPetName] = useState('');
-    const [coupleCode, setCoupleCode] = useState('');
+    const [coupleCode, setCoupleCode] = useState(localStorage.getItem('family_code') || '');
+
+    // Session-based authentication status (resets on tab close)
+    const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('is_authenticated') === 'true');
 
     const [bridgeItems, setBridgeItems] = useState([]);
     const [journalItems, setJournalItems] = useState([]);
@@ -253,7 +257,10 @@ const App = () => {
     // FAMILY BRIDGE: Portal Mode State
     const [portalMode, setPortalMode] = useState(() => localStorage.getItem('portal_mode') || 'couple'); // 'couple' | 'family' | 'kid'
     const [kidProfiles, setKidProfiles] = useState([]); // Array of kid profiles
-    const [currentKid, setCurrentKid] = useState(null); // Currently logged in kid
+    const [currentKid, setCurrentKid] = useState(() => {
+        const stored = localStorage.getItem('current_kid');
+        return stored ? JSON.parse(stored) : null;
+    });
     const [kidPinInput, setKidPinInput] = useState('');
     const [journalPrivacy, setJournalPrivacy] = useState(true); // Privacy mode for Kid Journal (Parent View)
     const [showKidManager, setShowKidManager] = useState(false);
@@ -311,6 +318,13 @@ const App = () => {
             } else {
                 setUser(u);
                 setAuthError(null);
+
+                // If we have a role/code but didn't land on hub/parent_hub, and we are authenticated, auto-route
+                if (localStorage.getItem('family_code') && localStorage.getItem('user_role') && view === 'home') {
+                    if (sessionStorage.getItem('is_authenticated') === 'true') {
+                        setView(localStorage.getItem('current_view') || 'parent_hub');
+                    }
+                }
             }
         });
         return () => unsubscribe();
@@ -1823,6 +1837,20 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         localStorage.setItem('notify_prefs', JSON.stringify(updated));
     };
 
+    const logout = () => {
+        if (!window.confirm('Are you sure you want to sign out? This will clear your saved session on this device.')) return;
+        setRole(null);
+        setCurrentKid(null);
+        setPortalMode('couple');
+        setIsAuthenticated(false);
+        setView('home');
+        localStorage.removeItem('user_role');
+        localStorage.removeItem('current_kid');
+        localStorage.removeItem('portal_mode');
+        localStorage.removeItem('current_view');
+        sessionStorage.removeItem('is_authenticated');
+    };
+
     // Filter bridge items based on user's clear timestamp
     const visibleBridgeItems = bridgeItems.filter(item => {
         if (!bridgeClearedAt) return true;
@@ -1898,7 +1926,17 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 {/* Parent Buttons */}
                 <div className="grid grid-cols-2 gap-2">
                     <button
-                        onClick={() => { if (coupleCode) { setPendingParentRole('his'); setParentPinInput(''); setShowParentPinModal(true); } }}
+                        onClick={() => {
+                            if (coupleCode) {
+                                if (role === 'his' && isAuthenticated) {
+                                    setView('parent_hub');
+                                } else {
+                                    setPendingParentRole('his');
+                                    setParentPinInput('');
+                                    setShowParentPinModal(true);
+                                }
+                            }
+                        }}
                         disabled={!coupleCode}
                         className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
                     >
@@ -1911,7 +1949,17 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         />
                     </button>
                     <button
-                        onClick={() => { if (coupleCode) { setPendingParentRole('hers'); setParentPinInput(''); setShowParentPinModal(true); } }}
+                        onClick={() => {
+                            if (coupleCode) {
+                                if (role === 'hers' && isAuthenticated) {
+                                    setView('parent_hub');
+                                } else {
+                                    setPendingParentRole('hers');
+                                    setParentPinInput('');
+                                    setShowParentPinModal(true);
+                                }
+                            }
+                        }}
                         disabled={!coupleCode}
                         className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
                     >
@@ -1939,12 +1987,16 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                             <button
                                 key={kid.id || i}
                                 onClick={() => {
-                                    setCurrentKid(kid);
-                                    setKidPinInput('');
-                                    // Fix "stuck" session: if portalMode is already 'kid', 
-                                    // we must reset it to trigger the PIN modal for the newly selected profile
-                                    if (portalMode === 'kid') {
-                                        setPortalMode('couple');
+                                    if (currentKid?.id === kid.id && isAuthenticated) {
+                                        setView('kid_hub');
+                                    } else {
+                                        setCurrentKid(kid);
+                                        setKidPinInput('');
+                                        // Fix "stuck" session: if portalMode is already 'kid', 
+                                        // we must reset it to trigger the PIN modal for the newly selected profile
+                                        if (portalMode === 'kid') {
+                                            setPortalMode('couple');
+                                        }
                                     }
                                 }}
                                 disabled={!coupleCode}
@@ -1988,6 +2040,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     const storedPin = localStorage.getItem(`${pendingParentRole}_pin`) || '0000';
                                     if (val === storedPin) {
                                         setRole(pendingParentRole);
+                                        localStorage.setItem('user_role', pendingParentRole);
+                                        localStorage.setItem('family_code', coupleCode);
+                                        sessionStorage.setItem('is_authenticated', 'true');
+                                        setIsAuthenticated(true);
                                         setShowParentPinModal(false);
                                         setParentPinInput('');
                                         setPendingParentRole(null);
@@ -2038,6 +2094,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 if (val.length === 4) {
                                     if (val === currentKid.pin) {
                                         setPortalMode('kid'); // Still useful state tracking
+                                        localStorage.setItem('current_kid', JSON.stringify(currentKid));
+                                        localStorage.setItem('portal_mode', 'kid');
+                                        sessionStorage.setItem('is_authenticated', 'true');
+                                        setIsAuthenticated(true);
                                         setView('kid_hub');
                                     } else {
                                         alert('Wrong PIN! Try again.');
@@ -2068,6 +2128,15 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
             )}
 
             {!coupleCode && <p className="text-[9px] text-purple-500 font-bold">↑ Enter Family Code to start</p>}
+
+            {isAuthenticated && (
+                <button
+                    onClick={logout}
+                    className={`mt-8 px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${darkMode ? 'border-slate-700 text-slate-500 hover:text-rose-400' : 'border-slate-200 text-slate-400 hover:text-rose-500'}`}
+                >
+                    Sign Out / Reset Session
+                </button>
+            )}
         </div>
     );
 
