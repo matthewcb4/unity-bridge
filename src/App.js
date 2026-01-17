@@ -17,11 +17,11 @@ import {
     onSnapshot, addDoc, serverTimestamp, query, deleteDoc, orderBy, limit, where
 } from 'firebase/firestore';
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
-import { LETTER_POINTS, getBonusType, calculateMoveScore, validateWord, getWordsFormed } from './letterLinkLogic';
-import { SHIPS, GRID_SIZE, createEmptyGrid, isValidPlacement, placeShipOnGrid, processAttack, checkAllShipsSunk, countRemainingShips, getAttackDisplay, hasPlacedAllShips } from './battleshipLogic';
 import ShieldCheckComp from './components/ShieldCheckComp';
 import CalendarView from './components/CalendarView';
-import { JOURNAL_TYPES, saveToJournal, deleteFromJournal, updateJournalEntry, exportJournalData } from './features/journaling/journalLogic';
+import KidPortal from './features/kid-portal/KidPortal';
+import GameHub from './features/games/GameHub';
+import FamilyGamesHub from './features/games/FamilyGamesHub';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
@@ -139,28 +139,6 @@ const App = () => {
     });
 
     // Game state
-    const [activeGames, setActiveGames] = useState([]);
-    const [currentGameId, setCurrentGameId] = useState(null); // ID of the specific game we are playing right now
-    const [gameHistory, setGameHistory] = useState([]);
-    const [gameAnswer, setGameAnswer] = useState('');
-
-    // Letter Link Interaction State
-    const [selectedTileIndex, setSelectedTileIndex] = useState(null); // Index in hand
-    const [placedTiles, setPlacedTiles] = useState([]); // [{ char, row, col, fromHandIndex }]
-    const [gameDebts, setGameDebts] = useState(() => JSON.parse(localStorage.getItem('game_debts') || '[]'));
-    const prevGamesRef = useRef({});
-    const [scoreboardFilter, setScoreboardFilter] = useState('all'); // all, 7days, 30days
-    const [gameTurn, setGameTurn] = useState(null); // 'his' or 'hers' - whose turn to guess
-    const [selectedGame, setSelectedGame] = useState(null); // null = show menu, 'word_scramble' = show game
-
-    // Battleship Game State
-    const [battleshipPhase, setBattleshipPhase] = useState('placing'); // 'placing' | 'battle' | 'ended'
-    const [battleshipSelectedShip, setBattleshipSelectedShip] = useState(null); // Currently selected ship for placement
-    const [battleshipOrientation, setBattleshipOrientation] = useState('horizontal'); // 'horizontal' | 'vertical'
-    const [localShipPlacements, setLocalShipPlacements] = useState({}); // { shipType: { row, col, orientation } }
-    const [localPlacementGrid, setLocalPlacementGrid] = useState(createEmptyGrid()); // Local grid during placement
-    const [showMyShips, setShowMyShips] = useState(false); // Toggle for battleship battle phase
-    const [battleshipSelectedCell, setBattleshipSelectedCell] = useState(null); // { row, col } for battle phase targeting
 
     // NEW: Dark Mode
     const [darkMode, setDarkMode] = useState(() => localStorage.getItem('dark_mode') === 'true');
@@ -203,11 +181,6 @@ const App = () => {
         return stored ? JSON.parse(stored) : null;
     });
     const [kidPinInput, setKidPinInput] = useState('');
-    const [journalPrivacy, setJournalPrivacy] = useState(true); // Privacy mode for Kid Journal (Parent View)
-    const [showKidManager, setShowKidManager] = useState(false);
-    const [kidJournalItems, setKidJournalItems] = useState({ mood: null });
-    const [kidBridgeMessages, setKidBridgeMessages] = useState([]);
-    const [kidJournalEntries, setKidJournalEntries] = useState([]); // NEW: State for kid journal history
 
     // Parent PIN Authentication
     const [parentPinInput, setParentPinInput] = useState('');
@@ -215,11 +188,6 @@ const App = () => {
     const [pendingParentRole, setPendingParentRole] = useState(null); // 'his' or 'hers' - which parent is trying to log in
 
     // Family Games Hub
-    const [familyActiveGames, setFamilyActiveGames] = useState([]); // Active family games
-    const [familyGameHistory, setFamilyGameHistory] = useState([]); // Completed family games
-    const [selectedOpponent, setSelectedOpponent] = useState(null); // Selected opponent for new game
-    const [familyGameTab, setFamilyGameTab] = useState('lobby'); // 'lobby' | 'scoreboard'
-    const [currentFamilyGameId, setCurrentFamilyGameId] = useState(null); // Currently playing family game
     const [talkIntention, setTalkIntention] = useState('compliment'); // compliment, concern, question, update
     const [showFamilyCalendar, setShowFamilyCalendar] = useState(false);
 
@@ -334,22 +302,7 @@ const App = () => {
             setKidProfiles(kids.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
         }, (err) => console.error("Kids Sync Error:", err));
 
-        // Listen for family games (Family Games Hub) - Needed for indicator on Dashboard even without role? 
-        // Actually, kids need this too.
-        const familyGamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
-        const unsubFamilyGames = onSnapshot(familyGamesRef, (snap) => {
-            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setFamilyActiveGames(games.filter(g => g.phase !== 'completed').sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-        }, (err) => console.error("Family Games Sync Error:", err));
-
-        // Listen for family game history
-        const familyHistoryRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-        const unsubFamilyHistory = onSnapshot(familyHistoryRef, (snap) => {
-            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setFamilyGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
-        }, (err) => console.error("Family History Error:", err));
-
-        return () => { unsubSettings(); unsubKids(); unsubFamilyGames(); unsubFamilyHistory(); };
+        return () => { unsubSettings(); unsubKids(); };
     }, [user, coupleCode]);
 
     // Role-Specific Data Listeners
@@ -372,42 +325,10 @@ const App = () => {
             setJournalItems(items.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0)));
         }, (err) => console.error("Journal Sync Error:", err));
 
-        // Listen for active games (Concept: Lobby)
-        const activeGamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-        const unsubGames = onSnapshot(activeGamesRef, (snap) => {
-            const games = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-            // Notification Logic: Check for turn changes
-            games.forEach(g => {
-                const prevTurn = prevGamesRef.current[g.id];
-                const currentTurn = g.currentTurn || (g.createdBy === 'his' ? 'hers' : 'his');
-
-                // If it wasn't my turn, and now it IS my turn, and I haven't been notified yet for this state
-                if (prevTurn && prevTurn !== role && currentTurn === role) {
-                    sendNotification(
-                        "It's your turn!",
-                        `Time to move in ${g.type === 'letter_link' ? 'Letter Link' : 'Word Scramble'}!`,
-                        'games'
-                    );
-                }
-                prevGamesRef.current[g.id] = currentTurn;
-            });
-
-            // Sort by creation date desc
-            setActiveGames(games.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0)));
-        }, (err) => console.error("Games Sync Error:", err));
-
-        // Listen for game history
-        const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
-        const unsubHistory = onSnapshot(historyRef, (snap) => {
-            const items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setGameHistory(items.sort((a, b) => (b.completedAt?.seconds || 0) - (a.completedAt?.seconds || 0)));
-        }, (err) => console.error("Game History Error:", err));
-
         // Initial content load
         refreshVaults();
 
-        return () => { unsubBridge(); unsubJournal(); unsubGames(); unsubHistory(); };
+        return () => { unsubBridge(); unsubJournal(); };
     }, [user, role, coupleCode]);
 
     // --- ACTIONS ---
@@ -871,807 +792,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         setIsGenerating(false);
     };
 
-    // --- GAME FUNCTIONS ---
 
-
-
-
-
-    // Kid Bridge Listener & Journal Listener
-    useEffect(() => {
-        if (!currentKid || !coupleCode) return;
-
-        // Bridge Messages
-        const qBridge = query(
-            collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items'),
-            orderBy('timestamp', 'asc'),
-            limit(50)
-        );
-
-        // Journal Entries (New)
-        const qJournal = query(
-            collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal'),
-            orderBy('timestamp', 'desc'),
-            limit(20)
-        );
-
-        const unsubBridge = onSnapshot(qBridge, (snapshot) => {
-            const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setKidBridgeMessages(msgs);
-        });
-
-        const unsubJournal = onSnapshot(qJournal, (snapshot) => {
-            const entries = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setKidJournalEntries(entries);
-        });
-
-        return () => {
-            unsubBridge();
-            unsubJournal();
-        };
-    }, [currentKid, coupleCode]);
-
-    const scrambleWord = (word) => {
-        if (word.length < 3) return word;
-        const arr = word.split('');
-        for (let i = arr.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [arr[i], arr[j]] = [arr[j], arr[i]];
-        }
-        return arr.join('') === word ? scrambleWord(word) : arr.join('');
-    };
-
-    const createWordPuzzle = async (wager = '') => {
-        if (!coupleCode || !db || !role) return;
-
-        // Personal words logic inlined to fix build issues
-        const words = new Set(['LOVE', 'KISS', 'HUG', 'HOME', 'TRUST', 'FOREVER']);
-        if (husbandName) words.add(husbandName.toUpperCase());
-        if (wifeName) words.add(wifeName.toUpperCase());
-        if (husbandPetName) husbandPetName.split(',').forEach(n => words.add(n.trim().toUpperCase()));
-        if (wifePetName) wifePetName.split(',').forEach(n => words.add(n.trim().toUpperCase()));
-
-        journalItems.forEach(item => {
-            if (item.content) {
-                const matches = item.content.match(/\b[A-Za-z]{4,8}\b/g);
-                if (matches) {
-                    const keywords = ['DATE', 'TRIP', 'WALK', 'MOVIE', 'DINNER', 'BEACH', 'DREAM', 'SMILE', 'LAUGH'];
-                    keywords.forEach(k => { if (item.content.toUpperCase().includes(k)) words.add(k); });
-                }
-            }
-        });
-        const personalWords = Array.from(words).filter(w => w.length >= 3);
-
-        const word = personalWords[Math.floor(Math.random() * personalWords.length)];
-        const scrambled = scrambleWord(word);
-        const creatorName = role === 'his' ? husbandName : wifeName;
-
-
-        // Check if it's a personal word (name or from journal)
-        const isPersonal = word === husbandName?.toUpperCase() || word === wifeName?.toUpperCase() ||
-            journalItems.some(j => j.content?.toUpperCase().includes(word));
-
-        try {
-            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-            const docRef = await addDoc(gamesRef, {
-                type: 'word_scramble',
-                word: word,
-                scrambled: scrambled,
-                wager: wager,
-                isPersonal: isPersonal,
-                hint: isPersonal ? '💕 This word is special to us!' : '',
-                createdBy: role,
-                creatorName: creatorName,
-                createdAt: serverTimestamp(),
-                currentTurn: role === 'his' ? 'hers' : 'his', // Other player goes first
-                hisScore: 0,
-                hersScore: 0,
-                targetScore: 10, // First to 10 wins!
-                solved: false
-            });
-            setGameAnswer('');
-            setCurrentGameId(docRef.id);
-        } catch (err) {
-            console.error('Create game error:', err);
-            alert('Could not create game. Please try again.');
-        }
-    };
-
-    // --- LETTER LINK HANDLERS ---
-    const handleTileClick = (index, char) => {
-        // If clicking a tile already placed on board (handled by board click usually, but if hand tile is clicked?)
-        // In hand: toggle selection
-        if (selectedTileIndex === index) {
-            setSelectedTileIndex(null); // Deselect
-        } else {
-            setSelectedTileIndex(index);
-        }
-    };
-
-    const handleBoardClick = (index) => {
-        const activeGame = activeGames.find(g => g.id === currentGameId);
-        if (!activeGame) return;
-
-        const row = Math.floor(index / 11);
-        const col = index % 11;
-
-        // Check if existing permanent tile is there (from activeGame.board)
-        let board = [];
-        try { board = JSON.parse(activeGame.board || '[]'); } catch (e) { }
-        if (board[index]) return; // Occupied by committed tile
-
-        // Check if occupied by a temporary placed tile
-        const tempTileIndex = placedTiles.findIndex(t => t.row === row && t.col === col);
-
-        if (tempTileIndex !== -1) {
-            // Clicked a temporary tile -> Return to hand
-            const tileToReturn = placedTiles[tempTileIndex];
-            setPlacedTiles(prev => prev.filter((_, i) => i !== tempTileIndex));
-            setSelectedTileIndex(null);
-            return;
-        }
-
-        // Placing a selection
-        if (selectedTileIndex !== null) {
-            // Check if this hand tile is already placed elsewhere?
-            // "placedTiles" tracks "fromHandIndex". 
-            // Actually, we should only show tiles in hand that are NOT in "placedTiles".
-            // Logic: The "hand" UI should hide tiles that are in "placedTiles".
-
-            const char = activeGame.players[role].hand[selectedTileIndex];
-            setPlacedTiles(prev => [...prev, { char, row, col, fromHandIndex: selectedTileIndex }]);
-            setSelectedTileIndex(null); // Clear selection after placing
-        }
-    };
-
-    const recallAllTiles = () => {
-        setPlacedTiles([]);
-        setSelectedTileIndex(null);
-    };
-
-    const submitLetterLinkMove = async () => {
-        if (placedTiles.length === 0) return;
-
-        // 1. Get Game
-        const activeGame = activeGames.find(g => g.id === currentGameId);
-        if (!activeGame) return;
-
-        let board = [];
-        try { board = JSON.parse(activeGame.board || '[]'); } catch (e) { }
-        if (board.length === 0) board = Array(121).fill(null);
-
-        // 2. Validate Turn (already checked in UI, but good for safety)
-        const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
-        if (currentTurn !== role) {
-            alert("It's not your turn!");
-            return;
-        }
-
-        // 3. Validate Placement (Simplified Connectivity)
-        // Rule: If board is empty, must touch center (60).
-        // Rule: If board has tiles, at least one placed tile must be adjacent to an existing tile.
-        // Rule: All placed tiles must be in a single row or column.
-
-        // A. Alignment Check
-        const rows = new Set(placedTiles.map(t => t.row));
-        const cols = new Set(placedTiles.map(t => t.col));
-        if (rows.size > 1 && cols.size > 1) {
-            alert("Tiles must be placed in a straight line!");
-            return;
-        }
-
-        // B. Connectivity Check
-        const boardHasTiles = board.some(cell => cell !== null);
-        let isConnected = false;
-
-        if (!boardHasTiles) {
-            // First move: must touch center (index 60)
-            isConnected = placedTiles.some(t => (t.row * 11 + t.col) === 60);
-            if (!isConnected) {
-                alert("First move must assume the center star (★)!");
-                return;
-            }
-        } else {
-            // Subsequent moves: must touch existing tile
-            // Check neighbors of all placed tiles
-            const neighbors = [
-                { r: -1, c: 0 }, { r: 1, c: 0 }, { r: 0, c: -1 }, { r: 0, c: 1 }
-            ];
-
-            isConnected = placedTiles.some(t => {
-                return neighbors.some(n => {
-                    const nr = t.row + n.r;
-                    const nc = t.col + n.c;
-                    if (nr < 0 || nr > 10 || nc < 0 || nc > 10) return false;
-                    const idx = nr * 11 + nc;
-                    return board[idx] !== null; // Touching an occupied cell
-                });
-            });
-
-            if (!isConnected) {
-                alert("Tiles must connect to existing words!");
-                return;
-            }
-        }
-
-        // C. Dictionary Validation
-        const words = getWordsFormed(placedTiles, board);
-        for (const word of words) {
-            const isValid = await validateWord(word);
-            if (!isValid) {
-                alert(`"${word}" is not a valid word!`);
-                return;
-            }
-        }
-
-        // 4. Calculate Score
-        const moveScore = calculateMoveScore(placedTiles, board);
-
-        // 5. Update Board & Hand
-        const newBoard = [...board];
-        placedTiles.forEach(t => {
-            newBoard[t.row * 11 + t.col] = { char: t.char, owner: role };
-        });
-
-        const myHand = [...activeGame.players[role].hand];
-        // Remove used tiles (matched by index to avoid duplicates)
-        // placedTiles has 'fromHandIndex'. Sort desc to splice correctly
-        placedTiles.sort((a, b) => b.fromHandIndex - a.fromHandIndex).forEach(t => {
-            myHand.splice(t.fromHandIndex, 1);
-        });
-
-        // Refill Hand from Bag
-        let bag = [...activeGame.bag];
-        while (myHand.length < 7 && bag.length > 0) {
-            myHand.push(bag.pop());
-        }
-
-        // 6. Push Update
-        try {
-            const nextTurn = role === 'his' ? 'hers' : 'his';
-            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', currentGameId), {
-                board: JSON.stringify(newBoard),
-                bag: bag,
-                [`players.${role}.hand`]: myHand,
-                [`players.${role}.score`]: (activeGame.players[role].score || 0) + moveScore,
-                currentTurn: nextTurn,
-                // Add to history log
-                history: [...(activeGame.history || []), {
-                    word: "MOVE", // TODO: Detect actual word string
-                    points: moveScore,
-                    player: role,
-                    timestamp: new Date().toISOString()
-                }]
-            });
-
-            setPlacedTiles([]);
-            setSelectedTileIndex(null);
-
-            // Queue Notification
-            try {
-                // Determine partner's user ID if possible, or just send generic. 
-                // Since sendNotification uses 'notifyPrefs', we just need to ensure the partner is subscribed.
-                // We'll rely on the simple 'game_move' type we added earlier (or 'games').
-                // Actually, let's just use the existing sendNotification. 
-                // Wait, sendNotification sends to THIS device? No, it's local.
-                // We need a Cloud Function for remote push. 
-                // For V1 (local PWA with shared login? No, likely separate devices).
-                // Existing solution uses `notifyPrefs` local check. 
-                // Real push requires FCM token exchange. 
-                // Assuming "cue the notification" means using the Service Worker we just built?
-                // The prompt says "que the notification". 
-                // If the user means local notification on the *other* device, that requires Firestore listener -> Service Worker trigger.
-                // My Sw implementation responds to "push" events.
-                // Firestore listeners in `App.js` can trigger `sendNotification` locally when data changes!
-                // So if I update `currentTurn`, the OTHER client's onSnapshot will fire.
-                // I need to make sure the OnSnapshot handler in App.js triggers a notification when turn changes to ME.
-            } catch (ignored) { }
-
-        } catch (err) {
-            console.error("Move Error:", err);
-            alert("Failed to submit move. Try again.");
-        }
-    };
-
-    // Shuffle hand tiles (local reorder in Firestore)
-    const shuffleHand = async (gameId) => {
-        const game = activeGames.find(g => g.id === gameId);
-        if (!game || !coupleCode || !db) return;
-
-        const myHand = [...(game.players?.[role]?.hand || [])];
-        // Fisher-Yates shuffle
-        for (let i = myHand.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [myHand[i], myHand[j]] = [myHand[j], myHand[i]];
-        }
-
-        try {
-            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
-                [`players.${role}.hand`]: myHand
-            });
-        } catch (err) {
-            console.error('Shuffle error:', err);
-        }
-    };
-
-    // Pass turn without placing tiles
-    const passLetterLinkTurn = async (gameId) => {
-        const game = activeGames.find(g => g.id === gameId);
-        if (!game || !coupleCode || !db) return;
-
-        if (!window.confirm('Pass your turn without playing? (The other player will go next)')) return;
-
-        try {
-            const nextTurn = role === 'his' ? 'hers' : 'his';
-            await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
-                currentTurn: nextTurn,
-                history: [...(game.history || []), {
-                    word: 'PASS',
-                    points: 0,
-                    player: role,
-                    timestamp: new Date().toISOString()
-                }]
-            });
-            setPlacedTiles([]);
-            setSelectedTileIndex(null);
-        } catch (err) {
-            console.error('Pass turn error:', err);
-            alert('Failed to pass turn.');
-        }
-    };
-
-    // End Letter Link game
-    const endLetterLinkGame = async (gameId) => {
-        const game = activeGames.find(g => g.id === gameId);
-        if (!game || !coupleCode || !db) return;
-
-        if (!window.confirm('End the game now? Final scores will be tallied.')) return;
-
-        try {
-            // Calculate final scores (subtract remaining tile points)
-            const hisHandPoints = (game.players?.his?.hand || []).reduce((sum, char) => sum + (LETTER_POINTS[char] || 0), 0);
-            const hersHandPoints = (game.players?.hers?.hand || []).reduce((sum, char) => sum + (LETTER_POINTS[char] || 0), 0);
-            const hisFinal = (game.players?.his?.score || 0) - hisHandPoints;
-            const hersFinal = (game.players?.hers?.score || 0) - hersHandPoints;
-            const winner = hisFinal > hersFinal ? 'his' : (hersFinal > hisFinal ? 'hers' : 'tie');
-
-            // Save to history
-            await addDoc(collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items'), {
-                type: 'letter_link',
-                winner: winner,
-                wager: game.wager || '',
-                hisScore: hisFinal,
-                hersScore: hersFinal,
-                completedAt: serverTimestamp()
-            });
-
-            // Delete active game
-            await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
-
-            setCurrentGameId(null);
-            setPlacedTiles([]);
-            setSelectedTileIndex(null);
-
-            const winnerName = winner === 'tie' ? 'It\'s a tie!' :
-                (winner === 'his' ? `${husbandName || 'Husband'} wins!` : `${wifeName || 'Wife'} wins!`);
-            alert(`Game Over! ${winnerName}\n\nFinal Scores:\n${husbandName || 'Him'}: ${hisFinal}\n${wifeName || 'Her'}: ${hersFinal}`);
-        } catch (err) {
-            console.error('End game error:', err);
-            alert('Failed to end game.');
-        }
-    };
-
-    const submitGameAnswer = async (gameId, answer) => {
-        const game = activeGames.find(g => g.id === gameId);
-        if (!game || !answer || !coupleCode || !db) return;
-
-        const isCorrect = answer.toUpperCase().trim() === game.word;
-        const playerName = role === 'his' ? husbandName : wifeName;
-        const scoreKey = role === 'his' ? 'hisScore' : 'hersScore';
-
-        if (isCorrect) {
-            try {
-                // Calculate new score (defaults to 0 for old games without scores)
-                const currentScore = (game[scoreKey] || 0) + 1;
-                const targetScore = game.targetScore || 10;
-
-                // Check if this player wins
-                if (currentScore >= targetScore) {
-                    // WINNER! Save to history and delete game
-                    const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
-                    await addDoc(historyRef, {
-                        type: game.type,
-                        wager: game.wager,
-                        createdBy: game.createdBy,
-                        creatorName: game.creatorName,
-                        solvedBy: role,
-                        solverName: playerName,
-                        finalScoreHis: role === 'his' ? currentScore : (game.hisScore || 0),
-                        finalScoreHers: role === 'hers' ? currentScore : (game.hersScore || 0),
-                        points: currentScore,
-                        completedAt: serverTimestamp()
-                    });
-
-                    await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
-                    setCurrentGameId(null);
-
-                    alert(`🏆 ${playerName} WINS! Final score: ${currentScore} - ${role === 'his' ? (game.hersScore || 0) : (game.hisScore || 0)}${game.wager ? `\n\n💝 Winner's reward: ${game.wager}` : ''}`);
-                } else {
-                    // Correct but game continues - generate new word
-                    const words = new Set(['LOVE', 'KISS', 'HUG', 'HOME', 'TRUST', 'FOREVER', 'HEART', 'SMILE', 'DREAM', 'HAPPY']);
-                    if (husbandName) words.add(husbandName.toUpperCase());
-                    if (wifeName) words.add(wifeName.toUpperCase());
-                    const personalWords = Array.from(words).filter(w => w.length >= 3 && w !== game.word);
-                    const newWord = personalWords[Math.floor(Math.random() * personalWords.length)];
-                    const newScrambled = scrambleWord(newWord);
-                    await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
-                        word: newWord,
-                        scrambled: newScrambled,
-                        [scoreKey]: currentScore,
-                        currentTurn: role === 'his' ? 'hers' : 'his' // Switch turns per word
-                    });
-
-                    setGameAnswer('');
-                    alert(`✅ Correct! +1 point\n\n📊 Score: ${role === 'his' ? currentScore : (game.hisScore || 0)} - ${role === 'hers' ? currentScore : (game.hersScore || 0)}\n\n🎯 First to ${targetScore} wins!`);
-                }
-            } catch (err) {
-                console.error('Submit answer error:', err);
-            }
-        } else {
-            // Wrong answer - switch turns!
-            const nextTurn = role === 'his' ? 'hers' : 'his';
-            const nextPlayerName = role === 'his' ? (wifeName || 'Partner') : (husbandName || 'Partner');
-
-            try {
-                await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
-                    currentTurn: nextTurn
-                });
-            } catch (err) {
-                console.error('Update turn error:', err);
-            }
-
-            setGameAnswer('');
-            alert(`❌ Wrong guess! It's now ${nextPlayerName}'s turn.`);
-        }
-    };
-
-    const deleteActiveGame = async (gameId) => {
-        if (!coupleCode || !db) return;
-        if (!window.confirm('Delete this game? It will be removed for both players.')) return;
-        try {
-            await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
-            if (currentGameId === gameId) setCurrentGameId(null);
-        } catch (err) {
-            console.error('Delete game error:', err);
-        }
-    };
-
-    // LETTER LINK (Scrabble-like) LOGIC
-    const createLetterLinkGame = async (wager = '') => {
-        if (!coupleCode || !db || !role) return;
-
-        // 11x11 Board (121 cells). null = empty. { char: 'A', owner: 'his' } = tile.
-        const board = Array(121).fill(null);
-        // Place center star
-        // board[60] -> center (row 5, col 5 for 0-indexed)
-
-        // Initial Bag
-        // Distribution (simplified): E-12, A-9, I-9, O-8, N-6, R-6, T-6, L-4, S-4, U-4, D-4, G-3, B-2, C-2, M-2, P-2, F-2, H-2, V-2, W-2, Y-2, K-1, J-1, X-1, Q-1, Z-1, Blank-2
-        const bagDist = { E: 12, A: 9, I: 9, O: 8, N: 6, R: 6, T: 6, L: 4, S: 4, U: 4, D: 4, G: 3, B: 2, C: 2, M: 2, P: 2, F: 2, H: 2, V: 2, W: 2, Y: 2, K: 1, J: 1, X: 1, Q: 1, Z: 1, '_': 2 };
-        let bag = [];
-        Object.entries(bagDist).forEach(([char, count]) => {
-            for (let i = 0; i < count; i++) bag.push(char);
-        });
-        // Shuffle bag
-        bag = bag.sort(() => Math.random() - 0.5);
-
-        // Deal 7 tiles to creator
-        const creatorHand = bag.splice(0, 7);
-        const partnerHand = bag.splice(0, 7);
-
-        try {
-            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-            const docRef = await addDoc(gamesRef, {
-                type: 'letter_link',
-                wager: wager,
-                createdBy: role,
-                creatorName: role === 'his' ? husbandName : wifeName,
-                createdAt: serverTimestamp(),
-                currentTurn: role, // Creator starts? Or randomize? Let's say creator starts to place first word.
-                board: JSON.stringify(board), // Store as string for simpler Firestore handling
-                bag: bag,
-                players: {
-                    his: { hand: role === 'his' ? creatorHand : partnerHand, score: 0 },
-                    hers: { hand: role === 'hers' ? creatorHand : partnerHand, score: 0 }
-                },
-                history: [] // Log of moves: { word: "HELLO", points: 14, player: 'his' }
-            });
-            alert('New game started! Good luck.');
-            // Auto-open
-            setCurrentGameId(docRef.id);
-        } catch (err) {
-            console.error('Create Letter Link error:', err);
-            alert('Failed to start game.');
-        }
-    };
-
-    // BATTLESHIP GAME LOGIC
-    const createBattleshipGame = async (wager = '') => {
-        if (!coupleCode || !db || !role) return;
-
-        try {
-            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
-            const docRef = await addDoc(gamesRef, {
-                type: 'battleship',
-                wager: wager,
-                createdBy: role,
-                creatorName: role === 'his' ? husbandName : wifeName,
-                createdAt: serverTimestamp(),
-                phase: 'placing', // 'placing' | 'battle' | 'ended'
-                currentTurn: role, // Who attacks next (during battle phase)
-                players: {
-                    his: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 },
-                    hers: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 }
-                },
-                winner: null
-            });
-            alert('Battleship game created! Place your ships.');
-            setCurrentGameId(docRef.id);
-            // Reset local placement state
-            setLocalShipPlacements({});
-            setLocalPlacementGrid(createEmptyGrid());
-            setBattleshipSelectedShip(null);
-            setBattleshipPhase('placing');
-        } catch (err) {
-            console.error('Create Battleship error:', err);
-            alert('Failed to start Battleship game.');
-        }
-    };
-
-    const placeBattleshipShip = (row, col) => {
-        if (!battleshipSelectedShip) {
-            alert('Select a ship first!');
-            return;
-        }
-
-        if (localShipPlacements[battleshipSelectedShip]) {
-            alert(`${SHIPS[battleshipSelectedShip].name} already placed! Select another ship or tap "Ready".`);
-            return;
-        }
-
-        if (!isValidPlacement(localPlacementGrid, battleshipSelectedShip, row, col, battleshipOrientation)) {
-            alert('Invalid placement! Ships cannot overlap or go out of bounds.');
-            return;
-        }
-
-        const newGrid = placeShipOnGrid(localPlacementGrid, battleshipSelectedShip, row, col, battleshipOrientation);
-        setLocalPlacementGrid(newGrid);
-        setLocalShipPlacements(prev => ({
-            ...prev,
-            [battleshipSelectedShip]: { row, col, orientation: battleshipOrientation }
-        }));
-        setBattleshipSelectedShip(null); // Deselect after placing
-    };
-
-    const confirmBattleshipPlacement = async (gameId) => {
-        if (!hasPlacedAllShips(localPlacementGrid)) {
-            alert('Place all 5 ships before confirming!');
-            return;
-        }
-
-        try {
-            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId);
-            const gameSnap = await getDoc(gameRef);
-            if (!gameSnap.exists()) return;
-
-            const gameData = gameSnap.data();
-            const playerKey = role;
-
-            // Update player's grid and mark as ready
-            const updatedPlayers = { ...gameData.players };
-            updatedPlayers[playerKey] = {
-                ...updatedPlayers[playerKey],
-                grid: JSON.stringify(localPlacementGrid),
-                ready: true
-            };
-
-            // Check if both players are ready
-            const otherPlayer = playerKey === 'his' ? 'hers' : 'his';
-            const bothReady = updatedPlayers[otherPlayer].ready && updatedPlayers[playerKey].ready;
-
-            await updateDoc(gameRef, {
-                players: updatedPlayers,
-                phase: bothReady ? 'battle' : 'placing',
-                currentTurn: bothReady ? gameData.createdBy : gameData.currentTurn // Creator goes first in battle
-            });
-
-            if (bothReady) {
-                alert('Both players ready! Battle begins!');
-            } else {
-                alert('Ships placed! Waiting for opponent...');
-            }
-        } catch (err) {
-            console.error('Confirm placement error:', err);
-            alert('Failed to confirm placement.');
-        }
-    };
-
-    const attackBattleshipCell = async (gameId, row, col) => {
-        try {
-            const gameRef = doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId);
-            const gameSnap = await getDoc(gameRef);
-            if (!gameSnap.exists()) return;
-
-            const gameData = gameSnap.data();
-
-            if (gameData.currentTurn !== role) {
-                alert("Not your turn!");
-                return;
-            }
-
-            const opponentKey = role === 'his' ? 'hers' : 'his';
-            const opponentGrid = JSON.parse(gameData.players[opponentKey].grid);
-            const myAttackGrid = JSON.parse(gameData.players[role].attackGrid);
-
-            // Check if already attacked
-            if (myAttackGrid[row][col] !== null) {
-                alert('Already attacked this cell!');
-                return;
-            }
-
-            // Process attack on opponent's grid
-            const { result, shipType, newGrid } = processAttack(opponentGrid, row, col);
-
-            // Update my attack grid to show hit/miss
-            myAttackGrid[row][col] = result === 'hit' || result === 'sunk' ? { hit: true } : 'miss';
-
-            const updatedPlayers = { ...gameData.players };
-            updatedPlayers[opponentKey].grid = JSON.stringify(newGrid);
-            updatedPlayers[role].attackGrid = JSON.stringify(myAttackGrid);
-
-            // Check for win
-            const opponentAllSunk = checkAllShipsSunk(newGrid);
-            const remainingShips = countRemainingShips(newGrid);
-            updatedPlayers[opponentKey].shipsRemaining = remainingShips;
-
-            let alertMsg = result === 'miss' ? '💨 Miss!' : result === 'sunk' ? `💥 You sunk their ${SHIPS[shipType].name}!` : '💥 Hit!';
-
-            if (opponentAllSunk) {
-                // Game over - current player wins
-                await updateDoc(gameRef, {
-                    players: updatedPlayers,
-                    phase: 'ended',
-                    winner: role,
-                    currentTurn: null
-                });
-
-                // Add to game history
-                const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'games', 'history', 'items');
-                await addDoc(historyRef, {
-                    type: 'battleship',
-                    word: 'Battleship Victory',
-                    solvedBy: role,
-                    solverName: role === 'his' ? husbandName : wifeName,
-                    points: 50, // Battleship wins worth 50 points
-                    completedAt: serverTimestamp(),
-                    wager: gameData.wager || ''
-                });
-
-                alert('🎉 You won! All enemy ships destroyed!');
-            } else {
-                // Switch turns
-                await updateDoc(gameRef, {
-                    players: updatedPlayers,
-                    currentTurn: opponentKey
-                });
-                alert(alertMsg);
-            }
-
-            // Send notification to opponent
-            sendNotification(
-                opponentAllSunk ? 'Game Over!' : "Your turn!",
-                opponentAllSunk ? 'You lost the Battleship game!' : `Your opponent ${result === 'sunk' ? 'sunk your ship!' : result === 'hit' ? 'hit your ship!' : 'missed!'}`,
-                'games'
-            );
-
-        } catch (err) {
-            console.error('Attack error:', err);
-            alert('Failed to attack.');
-        }
-    };
-
-    // FAMILY GAMES HUB - Create game between any family members
-    const createFamilyGame = async (opponent, gameType, wager = '') => {
-        if (!coupleCode || !db) return;
-
-        // Determine current player identity
-        const currentPlayerId = currentKid ? currentKid.id : role;
-        const currentPlayerName = currentKid ? currentKid.name : (role === 'his' ? husbandName : wifeName);
-        const currentPlayerAvatar = currentKid ? (currentKid.avatar || '🧒') : (role === 'his' ? '👨' : '👩');
-
-        try {
-            const gamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
-
-            let gameData = {
-                type: gameType,
-                wager: wager,
-                createdBy: currentPlayerId,
-                creatorName: currentPlayerName,
-                creatorAvatar: currentPlayerAvatar,
-                opponentId: opponent.id,
-                opponentName: opponent.name,
-                opponentAvatar: opponent.avatar || (opponent.id === 'his' ? '👨' : opponent.id === 'hers' ? '👩' : '🧒'),
-                createdAt: serverTimestamp(),
-                currentTurn: currentPlayerId,
-                phase: 'active'
-            };
-
-            // Game-specific setup
-            if (gameType === 'word_scramble') {
-                // Generate a simple word puzzle - Turn based race to 10 points
-                const FAMILY_SCRAMBLE_WORDS = [
-                    'FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'FRIENDS', 'AWESOME', 'SUPER', 'WINNER', 'CHAMPION',
-                    'SMILE', 'LAUGH', 'DANCE', 'MUSIC', 'BEACH', 'PIZZA', 'SUNNY', 'CANDY', 'PARTY', 'MOVIE',
-                    'GARDEN', 'PICNIC', 'KINDNESS', 'JOURNEY', 'BRAVE', 'DREAMS', 'COOKIE', 'FOREST', 'NATURE', 'SUMMER',
-                    'WINTER', 'SPRING', 'AUTUMN', 'PUZZLE', 'WONDER', 'BRIGHT', 'ENERGY', 'CHUCKLE', 'GIGGLE', 'GENTLE',
-                    'STREAK', 'ROCKET', 'JUNGLE', 'MONSTER', 'DRAGON', 'WIZARD', 'MAGIC', 'PLANET', 'GALAXY', 'SPARKLE'
-                ];
-                const word = FAMILY_SCRAMBLE_WORDS[Math.floor(Math.random() * FAMILY_SCRAMBLE_WORDS.length)];
-                const scrambled = word.split('').sort(() => Math.random() - 0.5).join('');
-                gameData.word = word;
-                gameData.scrambled = scrambled;
-                gameData.hint = `${word.length} letters`;
-                gameData.players = {
-                    [currentPlayerId]: { score: 0 },
-                    [opponent.id]: { score: 0 }
-                };
-                gameData.targetScore = 10;
-            } else if (gameType === 'letter_link') {
-                const board = Array(121).fill(null);
-                let bag = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ'.split('');
-                bag = bag.sort(() => Math.random() - 0.5);
-                const creatorHand = bag.splice(0, 7);
-                const opponentHand = bag.splice(0, 7);
-                gameData.board = JSON.stringify(board);
-                gameData.bag = bag;
-                gameData.players = {
-                    [currentPlayerId]: { hand: creatorHand, score: 0 },
-                    [opponent.id]: { hand: opponentHand, score: 0 }
-                };
-                gameData.history = [];
-            } else if (gameType === 'battleship') {
-                gameData.phase = 'placing';
-                gameData.players = {
-                    [currentPlayerId]: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 },
-                    [opponent.id]: { grid: JSON.stringify(createEmptyGrid()), attackGrid: JSON.stringify(createEmptyGrid()), ready: false, shipsRemaining: 5 }
-                };
-                gameData.winner = null;
-            }
-
-            await addDoc(gamesRef, gameData);
-            alert(`Game started with ${opponent.name}! Good luck! 🎮`);
-            setSelectedOpponent(null);
-            setView('family_games');
-        } catch (err) {
-            console.error('Create Family Game error:', err);
-            alert('Failed to start game.');
-        }
-    };
-
-    // Get all family members for opponent selection
-    const getFamilyMembers = () => {
-        const members = [];
-        // Add parents
-        if (husbandName) members.push({ id: 'his', name: husbandName || 'Dad', avatar: '👨' });
-        if (wifeName) members.push({ id: 'hers', name: wifeName || 'Mom', avatar: '👩' });
-        // Add kids
-        kidProfiles.forEach(kid => {
-            members.push({ id: kid.id, name: kid.name, avatar: kid.avatar || '🧒' });
-        });
-        // Filter out current player
-        const currentId = currentKid ? currentKid.id : role;
-        return members.filter(m => m.id !== currentId);
-    };
 
     const clearBridgeView = () => {
         if (window.confirm('Clear your bridge history? (This only clears your view, not your partner\'s)')) {
@@ -2944,2683 +2065,653 @@ Generated by Unity Bridge - Relationship OS`;
                     )}
 
                     {view === 'games' && (
-                        <div className="p-2 space-y-2 animate-in slide-in-from-bottom-4">
-                            {!currentGameId && (
-                                <div className="text-center space-y-1 pt-1">
-                                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
-                                        <Gamepad2 className="w-6 h-6 text-purple-600" />
-                                    </div>
-                                    <h2 className="text-xl font-black text-slate-800 tracking-tighter italic">Couple Games</h2>
-                                    <p className="text-[10px] text-slate-400">Play together, wager fun rewards!</p>
-                                </div>
-                            )}
-
-                            {/* Active Game or Create New */}
-                            {/* Game View Logic */}
-                            {(() => {
-                                const activeGame = activeGames.find(g => g.id === currentGameId);
-
-                                // 1. SPECIFIC GAME VIEW
-                                if (activeGame) {
-                                    return (
-                                        <div className="bg-white rounded-2xl shadow-xl border border-purple-100 px-1 py-2 space-y-2">
-                                            <div className="flex justify-between items-start">
-                                                <button
-                                                    onClick={() => setCurrentGameId(null)}
-                                                    className="text-xs font-bold text-slate-400 flex items-center gap-1"
-                                                >
-                                                    ← Back
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteActiveGame(activeGame.id)}
-                                                    className="text-slate-300 hover:text-red-400"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-
-                                            {/* WORD SCRAMBLE UI */}
-                                            {activeGame.type === 'word_scramble' && (
-                                                <>
-                                                    <div className="text-center">
-                                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Word Scramble from {activeGame.creatorName}</p>
-                                                        {activeGame.hint && <p className="text-xs text-pink-500 mt-1">{activeGame.hint}</p>}
-                                                    </div>
-                                                    <div className="text-center py-6">
-                                                        <p className="text-4xl font-black text-slate-800 tracking-[0.3em]">{activeGame.scrambled}</p>
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            {/* Common Wager Display */}
-                                            {activeGame.wager && (
-                                                <div className="px-2 py-1 bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg text-center">
-                                                    <p className="text-[9px] font-bold text-purple-600 uppercase">💝 Wager</p>
-                                                    <p className="text-xs font-bold text-slate-700">{activeGame.wager}</p>
-                                                </div>
-                                            )}
-
-
-                                            {/* LETTER LINK UI */}
-                                            {activeGame.type === 'letter_link' && (() => {
-                                                let board = [];
-                                                try { board = JSON.parse(activeGame.board || '[]'); } catch (e) { }
-                                                if (board.length === 0) board = Array(121).fill(null);
-
-                                                const myHand = activeGame.players?.[role]?.hand || [];
-
-                                                return (() => {
-                                                    // Prepare display board (permanent + temporary)
-                                                    const displayBoard = [...board];
-                                                    placedTiles.forEach(t => {
-                                                        displayBoard[t.row * 11 + t.col] = { char: t.char, temporary: true };
-                                                    });
-
-                                                    // Prepare hand visualization
-                                                    const handDisplay = myHand.map((char, originalIndex) => {
-                                                        const isSelected = selectedTileIndex === originalIndex;
-                                                        const isPlaced = placedTiles.some(t => t.fromHandIndex === originalIndex);
-                                                        return { char, originalIndex, isSelected, isPlaced };
-                                                    });
-
-                                                    // Check turn
-                                                    const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
-                                                    const isMyTurn = currentTurn === role;
-
-                                                    return (
-                                                        <div className="flex flex-col items-center gap-2">
-                                                            {/* 11x11 BOARD */}
-                                                            <div className="grid grid-cols-11 gap-[1px] bg-indigo-900 p-0.5 rounded-lg border border-indigo-950 shadow-inner select-none touch-none">
-                                                                {displayBoard.map((cell, i) => {
-                                                                    const isCenter = i === 60;
-                                                                    const isTemporary = cell?.temporary;
-                                                                    const bonus = getBonusType(i);
-
-                                                                    // Bonus square colors
-                                                                    const bonusStyles = {
-                                                                        'TW': 'bg-red-500/80 text-red-100',
-                                                                        'DW': 'bg-pink-400/70 text-pink-100',
-                                                                        'TL': 'bg-blue-500/80 text-blue-100',
-                                                                        'DL': 'bg-sky-400/70 text-sky-100',
-                                                                        'STAR': 'bg-indigo-600 text-amber-300'
-                                                                    };
-                                                                    const bonusLabels = { 'TW': '3×W', 'DW': '2×W', 'TL': '3×L', 'DL': '2×L', 'STAR': '★' };
-
-                                                                    return (
-                                                                        <div
-                                                                            key={i}
-                                                                            onClick={() => handleBoardClick(i)}
-                                                                            className={`w-[25px] h-[25px] flex items-center justify-center text-[10px] font-bold rounded-[2px] transition-all relative
-                                                                                ${cell
-                                                                                    ? (isTemporary ? 'bg-amber-200 text-amber-900 shadow-md transform scale-105 z-10 animate-pop' : 'bg-amber-100 text-amber-900 shadow-sm border border-amber-200')
-                                                                                    : (bonus ? bonusStyles[bonus] : 'bg-indigo-50/10')
-                                                                                }
-                                                                                ${(selectedTileIndex !== null && !cell) ? 'animate-pulse ring-2 ring-amber-400 cursor-pointer' : ''}
-                                                                            `}
-                                                                        >
-                                                                            {cell ? (
-                                                                                <div className="flex flex-col items-center leading-none">
-                                                                                    <span className="text-xs font-black">{cell.char}</span>
-                                                                                    <span className="text-[5px] font-bold opacity-60">{LETTER_POINTS[cell.char] || 0}</span>
-                                                                                </div>
-                                                                            ) : (bonus ? <span className="text-[7px] font-bold">{bonusLabels[bonus]}</span> : '')}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-
-                                                            {/* SCORES & MOVE HISTORY */}
-                                                            <div className="w-full flex justify-between items-center px-2 py-2 bg-gradient-to-r from-indigo-50 to-purple-50 rounded-xl border border-indigo-100">
-                                                                <div className="text-center">
-                                                                    <p className="text-[9px] font-bold text-indigo-400 uppercase">{husbandName || 'Him'}</p>
-                                                                    <p className="text-lg font-black text-indigo-700">{activeGame.players?.his?.score || 0}</p>
-                                                                </div>
-                                                                <div className="text-center px-3">
-                                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Tiles Left</p>
-                                                                    <p className="text-sm font-bold text-slate-600">{activeGame.bag?.length || 0}</p>
-                                                                </div>
-                                                                <div className="text-center">
-                                                                    <p className="text-[9px] font-bold text-purple-400 uppercase">{wifeName || 'Her'}</p>
-                                                                    <p className="text-lg font-black text-purple-700">{activeGame.players?.hers?.score || 0}</p>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Last Move */}
-                                                            {activeGame.history?.length > 0 && (
-                                                                <div className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 text-center">
-                                                                    <p className="text-[10px] text-amber-700">
-                                                                        <span className="font-bold">{activeGame.history[activeGame.history.length - 1]?.player === 'his' ? (husbandName || 'Him') : (wifeName || 'Her')}</span>
-                                                                        {' scored '}
-                                                                        <span className="font-black text-amber-900">{activeGame.history[activeGame.history.length - 1]?.points} pts</span>
-                                                                        {activeGame.history[activeGame.history.length - 1]?.word && ` with "${activeGame.history[activeGame.history.length - 1]?.word}"`}
-                                                                    </p>
-                                                                </div>
-                                                            )}
-
-                                                            {/* RACK / HAND */}
-                                                            <div className="flex flex-col items-center gap-2 w-full">
-                                                                <div className="w-full bg-amber-800 p-2 rounded-xl shadow-lg flex justify-center gap-1.5">
-                                                                    {handDisplay.map((tile, i) => (
-                                                                        <div
-                                                                            key={i}
-                                                                            onClick={() => !tile.isPlaced && handleTileClick(tile.originalIndex, tile.char)}
-                                                                            className={`w-10 h-12 rounded flex flex-col items-center justify-center font-black shadow transition-all
-                                                                                ${tile.isPlaced
-                                                                                    ? 'bg-amber-900/50 text-amber-900/50 border-none'
-                                                                                    : (tile.isSelected
-                                                                                        ? 'bg-amber-300 text-amber-950 border-b-4 border-amber-500 -translate-y-1'
-                                                                                        : 'bg-amber-100 text-amber-900 border-b-4 border-amber-300 hover:bg-amber-50')
-                                                                                }
-                                                                            `}
-                                                                        >
-                                                                            <span className="text-lg leading-none">{tile.char}</span>
-                                                                            {!tile.isPlaced && <span className="text-[8px] font-bold opacity-60 leading-none">{LETTER_POINTS[tile.char] || 0}</span>}
-                                                                        </div>
-                                                                    ))}
-                                                                </div>
-
-                                                                {/* Primary Controls */}
-                                                                <div className="flex gap-2 w-full">
-                                                                    <button
-                                                                        onClick={recallAllTiles}
-                                                                        disabled={placedTiles.length === 0}
-                                                                        className="flex-1 py-3 bg-red-100 text-red-600 font-bold text-xs rounded-xl disabled:opacity-50"
-                                                                    >
-                                                                        Recall
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => shuffleHand(activeGame.id)}
-                                                                        disabled={!isMyTurn}
-                                                                        className="flex-1 py-3 bg-blue-100 text-blue-600 font-bold text-xs rounded-xl disabled:opacity-50"
-                                                                    >
-                                                                        🔀 Shuffle
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={submitLetterLinkMove}
-                                                                        disabled={!isMyTurn || placedTiles.length === 0}
-                                                                        className="flex-2 w-full py-3 bg-green-500 text-white font-black text-xs rounded-xl disabled:bg-slate-300 disabled:text-slate-500 shadow-lg"
-                                                                    >
-                                                                        {isMyTurn ? '✓ Submit' : 'Waiting...'}
-                                                                    </button>
-                                                                </div>
-
-                                                                {/* Secondary Controls */}
-                                                                <div className="flex gap-2 w-full">
-                                                                    <button
-                                                                        onClick={() => passLetterLinkTurn(activeGame.id)}
-                                                                        disabled={!isMyTurn || placedTiles.length > 0}
-                                                                        className="flex-1 py-2 bg-slate-100 text-slate-500 font-bold text-[10px] rounded-lg disabled:opacity-40"
-                                                                    >
-                                                                        ⏭ Pass Turn
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={() => endLetterLinkGame(activeGame.id)}
-                                                                        className="flex-1 py-2 bg-orange-100 text-orange-500 font-bold text-[10px] rounded-lg"
-                                                                    >
-                                                                        🏁 End Game
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })();
-                                            })()}
-
-                                            {/* BATTLESHIP UI */}
-                                            {activeGame.type === 'battleship' && (() => {
-                                                const myPlayerData = activeGame.players?.[role] || {};
-                                                const opponentKey = role === 'his' ? 'hers' : 'his';
-                                                const opponentData = activeGame.players?.[opponentKey] || {};
-                                                const phase = activeGame.phase || 'placing';
-                                                const isMyTurnBs = activeGame.currentTurn === role;
-                                                const winner = activeGame.winner;
-
-                                                let myGrid = [], myAttackGrid = [];
-                                                try {
-                                                    myGrid = JSON.parse(myPlayerData.grid || '[]');
-                                                    myAttackGrid = JSON.parse(myPlayerData.attackGrid || '[]');
-                                                } catch (e) { }
-                                                if (myGrid.length === 0) myGrid = createEmptyGrid();
-                                                if (myAttackGrid.length === 0) myAttackGrid = createEmptyGrid();
-
-                                                const displayGrid = phase === 'placing' && !myPlayerData.ready ? localPlacementGrid : myGrid;
-
-                                                return (
-                                                    <div className="space-y-3">
-                                                        <div className="text-center">
-                                                            <p className="text-[10px] font-bold text-cyan-500 uppercase">
-                                                                {phase === 'placing' ? '🚢 Place Your Ships' : phase === 'battle' ? '💥 Battle Phase' : '🏆 Game Over'}
-                                                            </p>
-                                                            {winner && (
-                                                                <p className={`text-lg font-black ${winner === role ? 'text-green-600' : 'text-red-500'}`}>
-                                                                    {winner === role ? '🎉 You Won!' : '💀 You Lost!'}
-                                                                </p>
-                                                            )}
-                                                        </div>
-
-                                                        {phase === 'placing' && !myPlayerData.ready && (
-                                                            <>
-                                                                <div className="space-y-2">
-                                                                    <p className="text-[9px] font-black text-slate-400 uppercase">Select Ship:</p>
-                                                                    <div className="grid grid-cols-5 gap-1">
-                                                                        {Object.entries(SHIPS).map(([type, ship]) => (
-                                                                            <button
-                                                                                key={type}
-                                                                                onClick={() => setBattleshipSelectedShip(type)}
-                                                                                disabled={!!localShipPlacements[type]}
-                                                                                className={`p-2 rounded-xl text-center transition-all ${localShipPlacements[type] ? 'bg-green-100 opacity-50'
-                                                                                    : battleshipSelectedShip === type ? 'bg-cyan-500 text-white ring-2 ring-cyan-300'
-                                                                                        : 'bg-slate-100 hover:bg-cyan-50'
-                                                                                    }`}
-                                                                            >
-                                                                                <span className="text-xl">{ship.emoji}</span>
-                                                                                <p className="text-[8px] font-bold">{ship.size}</p>
-                                                                            </button>
-                                                                        ))}
-                                                                    </div>
-                                                                    <button onClick={() => setBattleshipOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')} className="w-full py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
-                                                                        {battleshipOrientation === 'horizontal' ? '↔️ Horizontal' : '↕️ Vertical'}
-                                                                    </button>
-                                                                </div>
-
-                                                                <div className="flex justify-center">
-                                                                    <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-                                                                        {displayGrid.flat().map((cell, idx) => {
-                                                                            const row = Math.floor(idx / GRID_SIZE);
-                                                                            const col = idx % GRID_SIZE;
-                                                                            const hasShip = cell && cell.ship;
-                                                                            return (
-                                                                                <button key={idx} onClick={() => placeBattleshipShip(row, col)}
-                                                                                    className={`w-7 h-7 rounded-sm text-xs font-bold transition-all ${hasShip ? 'bg-cyan-500 text-white' : 'bg-blue-100 hover:bg-cyan-200'}`}>
-                                                                                    {hasShip ? '🚢' : ''}
-                                                                                </button>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-
-                                                                <button onClick={() => confirmBattleshipPlacement(activeGame.id)} disabled={Object.keys(localShipPlacements).length < 5}
-                                                                    className="w-full py-3 bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-black text-sm rounded-xl disabled:opacity-50">
-                                                                    ✓ Ready! ({Object.keys(localShipPlacements).length}/5 ships)
-                                                                </button>
-                                                            </>
-                                                        )}
-
-                                                        {phase === 'placing' && myPlayerData.ready && (
-                                                            <div className="text-center py-6">
-                                                                <p className="text-2xl mb-2">⏳</p>
-                                                                <p className="text-sm font-bold text-slate-600">Ships placed!</p>
-                                                                <p className="text-xs text-slate-400">Waiting for opponent...</p>
-                                                            </div>
-                                                        )}
-
-                                                        {phase === 'battle' && (
-                                                            <>
-                                                                <div className={`p-2 rounded-xl text-center ${isMyTurnBs ? 'bg-red-100 border-2 border-red-200' : 'bg-slate-100'}`}>
-                                                                    <p className="text-xs font-bold">
-                                                                        {isMyTurnBs ? <span className="text-red-600">🎯 FIRE!</span> : <span className="text-slate-500">⏳ Waiting...</span>}
-                                                                    </p>
-                                                                </div>
-                                                                <div className="grid grid-cols-2 gap-2 text-center">
-                                                                    <div onClick={() => setShowMyShips(true)} className={`p-2 rounded-xl cursor-pointer transition-all ${showMyShips ? 'bg-cyan-500 text-white shadow-lg scale-105' : 'bg-cyan-50 text-cyan-600 border border-cyan-100'}`}>
-                                                                        <p className="text-[9px] font-black uppercase">Your Fleet</p>
-                                                                        <p className="text-lg font-black">{myPlayerData.shipsRemaining || 5} 🚢</p>
-                                                                    </div>
-                                                                    <div onClick={() => setShowMyShips(false)} className={`p-2 rounded-xl cursor-pointer transition-all ${!showMyShips ? 'bg-red-500 text-white shadow-lg scale-105' : 'bg-red-50 text-red-600 border border-red-100'}`}>
-                                                                        <p className="text-[9px] font-black uppercase">Targeting</p>
-                                                                        <p className="text-lg font-black">{opponentData.shipsRemaining || 5} 🚢</p>
-                                                                    </div>
-                                                                </div>
-                                                                <div>
-                                                                    <p className="text-[9px] font-black text-slate-400 uppercase mb-1 text-center">
-                                                                        {showMyShips ? 'Fleet Defense Status' : 'Tap Enemy Waters to Attack'}
-                                                                    </p>
-                                                                    <div className="flex justify-center">
-                                                                        <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-                                                                            {(showMyShips ? myGrid : myAttackGrid).flat().map((cell, idx) => {
-                                                                                const row = Math.floor(idx / GRID_SIZE);
-                                                                                const col = idx % GRID_SIZE;
-
-                                                                                if (showMyShips) {
-                                                                                    // Display my own grid (ships and enemy hits)
-                                                                                    const hasShip = cell && cell.ship;
-                                                                                    const isHit = cell && cell.hit;
-                                                                                    const IsMiss = cell === 'miss';
-                                                                                    return (
-                                                                                        <div key={idx} className={`w-7 h-7 rounded-sm flex items-center justify-center text-xs transition-all ${IsMiss ? 'bg-blue-50' : isHit ? 'bg-red-400' : hasShip ? 'bg-cyan-500' : 'bg-blue-100'}`}>
-                                                                                            {isHit ? '💥' : IsMiss ? '⚪' : hasShip ? '🚢' : ''}
-                                                                                        </div>
-                                                                                    );
-                                                                                } else {
-                                                                                    // Display my attack grid (targeting enemy)
-                                                                                    const isHit = cell && (cell.hit || cell === 'miss');
-                                                                                    const displayChar = cell === 'miss' ? '⚪' : (cell && cell.hit) ? '💥' : '';
-                                                                                    return (
-                                                                                        <button key={idx} onClick={() => isMyTurnBs && !isHit && attackBattleshipCell(activeGame.id, row, col)}
-                                                                                            disabled={!isMyTurnBs || isHit}
-                                                                                            className={`w-7 h-7 rounded-sm text-xs font-bold transition-all ${isHit ? (cell === 'miss' ? 'bg-slate-200' : 'bg-red-400')
-                                                                                                : isMyTurnBs ? 'bg-blue-200 hover:bg-red-200 cursor-crosshair' : 'bg-blue-100 opacity-60'
-                                                                                                }`}>
-                                                                                            {displayChar}
-                                                                                        </button>
-                                                                                    );
-                                                                                }
-                                                                            })}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                                {showMyShips && (
-                                                                    <div className="grid grid-cols-5 gap-1">
-                                                                        {Object.entries(SHIPS).map(([type, ship]) => {
-                                                                            const hits = myGrid.flat().filter(c => c && c.ship === type && c.hit).length;
-                                                                            const isSunk = hits === ship.size;
-                                                                            return (
-                                                                                <div key={type} className={`p-1 rounded-lg text-center ${isSunk ? 'bg-red-50 opacity-40 grayscale' : 'bg-slate-50 border border-slate-100'}`}>
-                                                                                    <span className="text-sm">{ship.emoji}</span>
-                                                                                    <div className="flex justify-center gap-[1px] mt-0.5">
-                                                                                        {[...Array(ship.size)].map((_, i) => (
-                                                                                            <div key={i} className={`w-[3px] h-[3px] rounded-full ${i < hits ? 'bg-red-500' : 'bg-slate-300'}`} />
-                                                                                        ))}
-                                                                                    </div>
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                )}
-                                                            </>
-                                                        )}
-
-                                                        {phase === 'ended' && (
-                                                            <button onClick={() => { deleteActiveGame(activeGame.id); setCurrentGameId(null); }}
-                                                                className="w-full py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl">
-                                                                Close Game
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })()}
-
-                                            {/* Turn Indicator & Input */}
-                                            {(() => {
-                                                const currentTurn = activeGame.currentTurn || (activeGame.createdBy === 'his' ? 'hers' : 'his');
-                                                const isMyTurn = currentTurn === role;
-                                                const turnName = currentTurn === 'his' ? (husbandName || 'Him') : (wifeName || 'Her');
-
-                                                return (
-                                                    <>
-                                                        <div className={`p-3 rounded-2xl text-center ${isMyTurn ? 'bg-green-50 border-2 border-green-200' : 'bg-slate-100 border-2 border-slate-200'}`}>
-                                                            <p className="text-xs font-bold">
-                                                                {isMyTurn ? <span className="text-green-600">🎯 Your turn to guess!</span> : <span className="text-slate-500">⏳ Waiting for {turnName}...</span>}
-                                                            </p>
-                                                        </div>
-
-                                                        {/* Scramble Input */}
-                                                        {activeGame.type === 'word_scramble' && (
-                                                            <input
-                                                                type="text"
-                                                                value={gameAnswer}
-                                                                onChange={(e) => setGameAnswer(e.target.value)}
-                                                                placeholder={isMyTurn ? "Your answer..." : "Wait for your turn..."}
-                                                                disabled={!isMyTurn}
-                                                                className={`w-full p-4 border rounded-2xl text-center text-lg font-bold uppercase outline-none ${isMyTurn ? 'bg-slate-50 border-slate-200 focus:border-purple-300' : 'bg-slate-200 border-slate-300 text-slate-400 cursor-not-allowed'}`}
-                                                            />
-                                                        )}
-
-                                                        {activeGame.type !== 'letter_link' && (
-                                                            <button
-                                                                onClick={() => submitGameAnswer(activeGame.id, gameAnswer)}
-                                                                disabled={!gameAnswer || !isMyTurn}
-                                                                className="w-full py-4 text-sm font-black text-white bg-purple-600 rounded-2xl disabled:opacity-50 mt-2"
-                                                            >
-                                                                {isMyTurn ? 'Submit Answer' : 'Not Your Turn'}
-                                                            </button>
-                                                        )}
-                                                    </>
-                                                );
-                                            })()}
-                                        </div>
-                                    );
-                                }
-
-                                // 2a. CREATE NEW LETTER LINK UI
-                                if (selectedGame === 'letter_link') {
-                                    return (
-                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-blue-100 p-6 space-y-4">
-                                            <h3 className="text-center text-sm font-black text-blue-600 uppercase">New Letter Link Game</h3>
-                                            <p className="text-xs text-center text-slate-400">Classic word building with a personalized twist!</p>
-                                            <input
-                                                type="text"
-                                                placeholder="Optional wager for the winner..."
-                                                className="w-full p-4 bg-blue-50 border border-blue-100 rounded-2xl text-sm outline-none focus:border-blue-300"
-                                                id="ll-wager-input"
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    const wager = document.getElementById('ll-wager-input')?.value || '';
-                                                    createLetterLinkGame(wager);
-                                                    setSelectedGame(null);
-                                                }}
-                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-blue-500 to-indigo-500 rounded-2xl shadow-lg"
-                                            >
-                                                🧩 Start Game
-                                            </button>
-                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
-                                        </div>
-                                    );
-                                }
-
-                                // 2b. CREATE NEW BATTLESHIP UI
-                                if (selectedGame === 'battleship') {
-                                    return (
-                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-cyan-100 p-6 space-y-4">
-                                            <h3 className="text-center text-sm font-black text-cyan-600 uppercase">New Battleship Game</h3>
-                                            <p className="text-xs text-center text-slate-400">Classic 10×10 naval warfare!</p>
-                                            <div className="text-center py-2">
-                                                <span className="text-4xl">⚓🚢💥</span>
-                                            </div>
-                                            <input
-                                                type="text"
-                                                placeholder="Optional wager for the winner..."
-                                                className="w-full p-4 bg-cyan-50 border border-cyan-100 rounded-2xl text-sm outline-none focus:border-cyan-300"
-                                                id="bs-wager-input"
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    const wager = document.getElementById('bs-wager-input')?.value || '';
-                                                    createBattleshipGame(wager);
-                                                    setSelectedGame(null);
-                                                }}
-                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-cyan-500 to-teal-500 rounded-2xl shadow-lg"
-                                            >
-                                                ⚓ Start Battle
-                                            </button>
-                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
-                                        </div>
-                                    );
-                                }
-
-                                // 2. CREATE NEW SCRAMBLE (Existing)
-                                if (selectedGame === 'word_scramble') {
-                                    return (
-                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                            <h3 className="text-center text-sm font-black text-purple-600 uppercase">New Word Scramble</h3>
-                                            <input
-                                                type="text"
-                                                placeholder="Optional wager... (e.g., 'Loser gives a massage')"
-                                                className="w-full p-4 bg-purple-50 border border-purple-100 rounded-2xl text-sm outline-none focus:border-purple-300"
-                                                id="wager-input"
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    const wager = document.getElementById('wager-input')?.value || '';
-                                                    createWordPuzzle(wager);
-                                                    setSelectedGame(null); // Return to lobby
-                                                }}
-                                                className="w-full py-4 text-sm font-black text-white bg-gradient-to-r from-purple-600 to-pink-600 rounded-2xl shadow-lg"
-                                            >
-                                                🎲 Generate Puzzle
-                                            </button>
-                                            <button onClick={() => setSelectedGame(null)} className="w-full py-3 text-xs font-bold text-slate-400">Cancel</button>
-                                        </div>
-                                    );
-                                }
-
-                                // 3. GAME LOBBY (Default)
-                                return (
-                                    <div className="space-y-4">
-                                        {/* Active Games List */}
-                                        {activeGames.length > 0 && (
-                                            <div className="space-y-2">
-                                                <h3 className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Active Games</h3>
-                                                {activeGames.map(game => {
-                                                    const currentTurn = game.currentTurn || (game.createdBy === 'his' ? 'hers' : 'his');
-                                                    const isMyTurn = currentTurn === role;
-                                                    return (
-                                                        <button
-                                                            key={game.id}
-                                                            onClick={() => setCurrentGameId(game.id)}
-                                                            className={`w-full p-4 rounded-2xl border text-left transition-all ${isMyTurn ? 'bg-white border-purple-200 shadow-md ring-2 ring-purple-100' : 'bg-slate-50 border-slate-100 opacity-80'}`}
-                                                        >
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? 'Word Scramble' : game.type === 'letter_link' ? 'Letter Link' : 'Battleship'}</span>
-                                                                {game.type === 'battleship' && game.phase === 'placing' && !game.players[role]?.ready && <span className="text-[9px] font-black bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">PLACE SHIPS</span>}
-                                                                {game.type === 'battleship' && game.phase === 'placing' && game.players[role]?.ready && <span className="text-[9px] font-black bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full">WAITING</span>}
-                                                                {isMyTurn && game.type !== 'battleship' && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
-                                                                {isMyTurn && game.type === 'battleship' && game.phase === 'battle' && <span className="text-[9px] font-black bg-red-100 text-red-600 px-2 py-0.5 rounded-full">FIRE!</span>}
-                                                            </div>
-                                                            <div className="flex justify-between items-end">
-                                                                <div className="text-sm font-bold text-slate-700">
-                                                                    {game.type === 'word_scramble' ? (game.scrambled || 'Puzzle') : game.type === 'battleship' ? `⚓ ${game.phase === 'placing' ? 'Setup' : game.phase === 'battle' ? 'Battle' : 'Ended'}` : 'Ongoing Match'}
-                                                                </div>
-                                                                <div className="text-xs text-slate-400">
-                                                                    vs {game.creatorName === (husbandName || 'Husband') ? (wifeName || 'Wife') : (husbandName || 'Husband')}
-                                                                </div>
-                                                            </div>
-                                                        </button>
-                                                    );
-                                                })}
-                                            </div>
-                                        )}
-
-                                        {/* Create New Game Menu */}
-                                        <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                            <h3 className="text-center text-sm font-black text-purple-600 uppercase">Start New Game</h3>
-                                            <div className="grid grid-cols-1 gap-3">
-                                                <button
-                                                    onClick={() => setSelectedGame('word_scramble')}
-                                                    className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-100 rounded-2xl text-left hover:border-purple-300 transition-all flex items-center gap-4"
-                                                >
-                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🔤</div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-800 text-sm">Word Scramble</p>
-                                                        <p className="text-[10px] text-slate-500">Unscramble personalized words</p>
-                                                    </div>
-                                                </button>
-
-                                                <button
-                                                    onClick={() => setSelectedGame('letter_link')}
-                                                    className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-100 rounded-2xl text-left hover:border-blue-300 transition-all flex items-center gap-4"
-                                                >
-                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">🧩</div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-800 text-sm">Letter Link</p>
-                                                        <p className="text-[10px] text-slate-500">Scrabble-style with Memory Checks!</p>
-                                                    </div>
-                                                </button>
-
-                                                <button
-                                                    onClick={() => setSelectedGame('battleship')}
-                                                    className="p-4 bg-gradient-to-r from-cyan-50 to-teal-50 border-2 border-cyan-100 rounded-2xl text-left hover:border-cyan-300 transition-all flex items-center gap-4"
-                                                >
-                                                    <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center text-xl shadow-sm">⚓</div>
-                                                    <div>
-                                                        <p className="font-bold text-slate-800 text-sm">Battleship</p>
-                                                        <p className="text-[10px] text-slate-500">Classic naval warfare!</p>
-                                                    </div>
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })()}
-
-
-                            {/* Scoreboard with Points */}
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-purple-100 p-6 space-y-4">
-                                <div className="flex items-center gap-2 justify-center">
-                                    <Trophy className="w-5 h-5 text-yellow-500" />
-                                    <h3 className="text-sm font-black text-slate-800 uppercase">Scoreboard</h3>
-                                </div>
-
-                                {/* Timeline Filter */}
-                                <div className="flex justify-center gap-2">
-                                    {[
-                                        { id: '7days', label: '7 Days' },
-                                        { id: '30days', label: '30 Days' },
-                                        { id: 'all', label: 'All Time' }
-                                    ].map(filter => (
-                                        <button
-                                            key={filter.id}
-                                            onClick={() => setScoreboardFilter(filter.id)}
-                                            className={`px-3 py-1.5 rounded-full text-[9px] font-bold uppercase transition-all ${scoreboardFilter === filter.id
-                                                ? 'bg-purple-600 text-white'
-                                                : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
-                                                }`}
-                                        >
-                                            {filter.label}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                {(() => {
-                                    const now = new Date();
-                                    const filteredHistory = gameHistory.filter(g => {
-                                        if (scoreboardFilter === 'all') return true;
-                                        const gameDate = g.solvedAt?.toDate ? g.solvedAt.toDate() : new Date(g.solvedAt);
-                                        const daysDiff = Math.floor((now - gameDate) / (1000 * 60 * 60 * 24));
-                                        return scoreboardFilter === '7days' ? daysDiff <= 7 : daysDiff <= 30;
-                                    });
-                                    const hisWins = filteredHistory.filter(g => g.solvedBy === 'his').length;
-                                    const hersWins = filteredHistory.filter(g => g.solvedBy === 'hers').length;
-
-                                    return (
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="text-center p-4 bg-blue-50 rounded-2xl">
-                                                <p className="text-[10px] font-bold text-blue-500 uppercase">{husbandName || 'Him'}</p>
-                                                <p className="text-3xl font-black text-blue-600">{hisWins} 🏆</p>
-                                                <p className="text-[9px] text-blue-400">wins</p>
-                                            </div>
-                                            <div className="text-center p-4 bg-rose-50 rounded-2xl">
-                                                <p className="text-[10px] font-bold text-rose-500 uppercase">{wifeName || 'Her'}</p>
-                                                <p className="text-3xl font-black text-rose-600">{hersWins} 🏆</p>
-                                                <p className="text-[9px] text-rose-400">wins</p>
-                                            </div>
-                                        </div>
-                                    );
-                                })()}
-
-                                {gameHistory.length > 0 && (
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Recent Games</p>
-                                        {gameHistory.slice(0, 5).map((game, i) => (
-                                            <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                <span className="text-xs font-bold text-slate-600">{game.word}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-[10px] font-bold text-purple-600">+{game.points || 10} pts</span>
-                                                    <span className="text-[9px] text-slate-400">{game.solverName}</span>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Wager Debts Tracker */}
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border border-pink-100 p-6 space-y-4">
-                                <div className="flex items-center gap-2 justify-center">
-                                    <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-                                    <h3 className="text-sm font-black text-slate-800 uppercase">Wager Tracker</h3>
-                                </div>
-                                <p className="text-[10px] text-center text-slate-400">Track fun wagers and rewards owed!</p>
-
-                                {/* Add New Debt */}
-                                <div className="flex flex-col gap-2">
-                                    <input
-                                        type="text"
-                                        id="new-debt-input"
-                                        placeholder="e.g., Back massage, Dinner choice..."
-                                        className="flex-1 p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:border-pink-300"
-                                    />
-                                    <select id="new-debt-owner" className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none">
-                                        <option value="his">{husbandName || 'He'} owes</option>
-                                        <option value="hers">{wifeName || 'She'} owes</option>
-                                    </select>
-                                </div>
-                                <button
-                                    onClick={() => {
-                                        const input = document.getElementById('new-debt-input');
-                                        const owner = document.getElementById('new-debt-owner');
-                                        if (input.value.trim()) {
-                                            const newDebt = {
-                                                id: Date.now(),
-                                                description: input.value.trim(),
-                                                owedBy: owner.value,
-                                                paid: false,
-                                                createdAt: new Date().toISOString()
-                                            };
-                                            const updatedDebts = [...gameDebts, newDebt];
-                                            setGameDebts(updatedDebts);
-                                            localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                            input.value = '';
-                                        }
-                                    }}
-                                    className="w-full py-3 bg-pink-500 text-white font-bold text-xs rounded-xl"
-                                >
-                                    ➕ Add Wager
-                                </button>
-
-                                {/* Debts List */}
-                                {gameDebts.length > 0 && (
-                                    <div className="space-y-2 pt-2 border-t border-slate-100">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Outstanding Wagers</p>
-                                        {gameDebts.filter(d => !d.paid).map(debt => (
-                                            <div key={debt.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
-                                                <div className="flex items-center gap-3">
-                                                    <button
-                                                        onClick={() => {
-                                                            const updatedDebts = gameDebts.map(d =>
-                                                                d.id === debt.id ? { ...d, paid: true } : d
-                                                            );
-                                                            setGameDebts(updatedDebts);
-                                                            localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                                        }}
-                                                        className="w-6 h-6 rounded-full border-2 border-pink-300 bg-white hover:bg-pink-100 flex items-center justify-center transition-all"
-                                                    >
-                                                        <span className="text-pink-300 text-sm">💕</span>
-                                                    </button>
-                                                    <div>
-                                                        <p className="text-xs font-bold text-slate-600">{debt.description}</p>
-                                                        <p className="text-[9px] text-slate-400">
-                                                            {debt.owedBy === 'his' ? (husbandName || 'He') : (wifeName || 'She')} owes
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-
-                                        {/* Paid Debts */}
-                                        {gameDebts.filter(d => d.paid).length > 0 && (
-                                            <>
-                                                <p className="text-[10px] font-bold text-green-500 uppercase pt-2">✅ Paid Up</p>
-                                                {gameDebts.filter(d => d.paid).slice(0, 3).map(debt => (
-                                                    <div key={debt.id} className="flex items-center justify-between p-3 bg-green-50 rounded-xl opacity-60">
-                                                        <div className="flex items-center gap-3">
-                                                            <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                                                                <Check className="w-4 h-4 text-white" />
-                                                            </div>
-                                                            <p className="text-xs text-slate-500 line-through">{debt.description}</p>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => {
-                                                                const updatedDebts = gameDebts.filter(d => d.id !== debt.id);
-                                                                setGameDebts(updatedDebts);
-                                                                localStorage.setItem('game_debts', JSON.stringify(updatedDebts));
-                                                            }}
-                                                            className="text-slate-400 hover:text-red-500"
-                                                        >
-                                                            <Trash2 className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-
-                                {gameDebts.length === 0 && (
-                                    <p className="text-xs text-center text-slate-400 py-4">No wagers yet! Win a game and set a fun reward 🎁</p>
-                                )}
-                            </div>
-                        </div >
+                        <GameHub
+                            role={role}
+                            coupleCode={coupleCode}
+                            db={db}
+                            darkMode={darkMode}
+                            husbandName={husbandName}
+                            wifeName={wifeName}
+                            sendNotification={sendNotification}
+                        />
                     )}
+                </div>
+        </div >
+    )
+}
 
-                    {view === 'nudge' && (
-                        <div className="space-y-4 pt-2">
-                            {/* Header */}
-                            <div className="text-center space-y-2">
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-amber-900 border-amber-700' : 'bg-amber-100 border-white'}`}>
-                                    <Bell className="w-7 h-7 text-amber-600" />
+{
+    view === 'nudge' && (
+        <div className="space-y-4 pt-2">
+            {/* Header */}
+            <div className="text-center space-y-2">
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-amber-900 border-amber-700' : 'bg-amber-100 border-white'}`}>
+                    <Bell className="w-7 h-7 text-amber-600" />
+                </div>
+                <h2 className={`text-2xl font-black tracking-tighter italic ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Nudge & Settings</h2>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Manage reminders and your connection settings</p>
+            </div>
+
+            {/* Sub Tabs for Nudge */}
+            <div className={`flex gap-1 p-1.5 rounded-2xl border shadow-sm sticky top-0 z-10 ${darkMode ? 'bg-slate-800/90 border-slate-700 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
+                {[
+                    { id: 'reminders', label: '🔔 Nudges' },
+                    { id: 'settings', label: '⚙️ Settings' }
+                ].map(tab => (
+                    <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id)}
+                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === tab.id ? 'bg-amber-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
+                    >
+                        {tab.label}
+                    </button>
+                ))}
+            </div>
+
+            {activeTab === 'reminders' && (
+                <div className="space-y-4 animate-in fade-in">
+                    {/* Notification Settings */}
+                    <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
+                        <div className="flex items-center gap-2 justify-center">
+                            <Bell className="w-5 h-5 text-rose-500" />
+                            <h3 className={`text-sm font-black uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Notifications</h3>
+                        </div>
+
+                        {notificationPermission !== 'granted' ? (
+                            <div className="text-center space-y-3">
+                                <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
+                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
+                                    <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
+                                    <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
+                                    <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
+                                        <li>Tap the <strong>Share</strong> button</li>
+                                        <li>Select <strong>Add to Home Screen</strong></li>
+                                        <li>Open from home screen</li>
+                                    </ol>
                                 </div>
-                                <h2 className={`text-2xl font-black tracking-tighter italic ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Nudge & Settings</h2>
-                                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Manage reminders and your connection settings</p>
+                                <button onClick={requestNotificationPermission} className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all">
+                                    🔔 Enable Notifications
+                                </button>
                             </div>
-
-                            {/* Sub Tabs for Nudge */}
-                            <div className={`flex gap-1 p-1.5 rounded-2xl border shadow-sm sticky top-0 z-10 ${darkMode ? 'bg-slate-800/90 border-slate-700 backdrop-blur-md' : 'bg-white/80 border-slate-100 backdrop-blur-md'}`}>
+                        ) : (
+                            <div className="space-y-3">
+                                <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
                                 {[
-                                    { id: 'reminders', label: '🔔 Nudges' },
-                                    { id: 'settings', label: '⚙️ Settings' }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => setActiveTab(tab.id)}
-                                        className={`flex-1 py-2.5 text-[10px] font-black uppercase rounded-xl transition-all ${activeTab === tab.id ? 'bg-amber-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {activeTab === 'reminders' && (
-                                <div className="space-y-4 animate-in fade-in">
-                                    {/* Notification Settings */}
-                                    <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-rose-100'}`}>
-                                        <div className="flex items-center gap-2 justify-center">
-                                            <Bell className="w-5 h-5 text-rose-500" />
-                                            <h3 className={`text-sm font-black uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Notifications</h3>
-                                        </div>
-
-                                        {notificationPermission !== 'granted' ? (
-                                            <div className="text-center space-y-3">
-                                                <p className="text-xs text-slate-500">Enable notifications to get alerts for game turns, new messages, and reminders.</p>
-                                                <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-left">
-                                                    <p className="text-[10px] font-bold text-blue-600 mb-1">📱 iPhone / iOS Users:</p>
-                                                    <p className="text-[10px] text-slate-600">Notifications <u>only</u> work if you:</p>
-                                                    <ol className="list-decimal pl-4 text-[10px] text-slate-600 mt-1 space-y-0.5">
-                                                        <li>Tap the <strong>Share</strong> button</li>
-                                                        <li>Select <strong>Add to Home Screen</strong></li>
-                                                        <li>Open from home screen</li>
-                                                    </ol>
-                                                </div>
-                                                <button onClick={requestNotificationPermission} className="w-full py-4 bg-rose-500 text-white font-bold text-sm rounded-2xl hover:bg-rose-600 transition-all">
-                                                    🔔 Enable Notifications
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-3">
-                                                <p className="text-xs text-green-600 text-center font-bold">✅ Notifications enabled!</p>
-                                                {[
-                                                    { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn' },
-                                                    { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from partner' },
-                                                    { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for date nights' },
-                                                    { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a message' }
-                                                ].map(pref => (
-                                                    <div key={pref.key} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
-                                                        <div className="flex items-center gap-3">
-                                                            <span className="text-xl">{pref.emoji}</span>
-                                                            <div>
-                                                                <p className={`text-xs font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{pref.label}</p>
-                                                                <p className="text-[10px] text-slate-400">{pref.desc}</p>
-                                                            </div>
-                                                        </div>
-                                                        <button onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])} className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}>
-                                                            <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Daily Reminders */}
-                                    <div className="space-y-3">
-                                        {['Morning', 'Lunch', 'Evening'].map(time => {
-                                            const nudge = NUDGE_DATA[time];
-                                            const NudgeIcon = nudge.icon;
-                                            const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
-                                            return (
-                                                <div key={time} className={`p-4 border rounded-2xl shadow-lg space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-                                                    <div className="flex items-start gap-3">
-                                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-900/30' : 'bg-rose-50'}`}>
-                                                            <NudgeIcon className="w-5 h-5 text-rose-600" />
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <p className={`text-lg font-black tracking-tight ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{time} Check-in</p>
-                                                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${darkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-400'}`}>{nudge.time}</span>
-                                                            </div>
-                                                            <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
-                                                            <p className={`text-xs mt-1 italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>"{nudge.suggestion}"</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-2 pt-2 border-t border-slate-50">
-                                                        <button onClick={() => window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}`)}&recur=RRULE:FREQ=DAILY`, '_blank')} className={`flex-1 p-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
-                                                            <Calendar className="w-3 h-3" /> Go-Cal
-                                                        </button>
-                                                        <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
-                                                            {copiedId === `n-${time}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                                                            {copiedId === `n-${time}` ? 'Copied' : 'iPhone'}
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                            )}
-
-                            {activeTab === 'settings' && (
-                                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 animate-in fade-in ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-                                    <div className="flex items-center gap-3">
-                                        <Settings className="w-5 h-5 text-slate-500" />
-                                        <h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Settings & Stats</h2>
-                                    </div>
-
-                                    {/* Anniversary Date */}
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black text-pink-500 uppercase ml-2 tracking-widest flex items-center gap-2">
-                                            <Heart className="w-3 h-3" /> Anniversary Date
-                                        </label>
-                                        <input
-                                            type="date"
-                                            value={anniversaryDate}
-                                            onChange={(e) => saveAnniversary(e.target.value)}
-                                            className={`w-full p-4 rounded-2xl text-sm border outline-none text-center ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-pink-50 border-pink-100 focus:border-pink-300'}`}
-                                        />
-                                        {getDaysTogether() !== null && (
-                                            <div className="text-center py-4 bg-gradient-to-r from-pink-500 to-rose-500 rounded-2xl">
-                                                <p className="text-4xl font-black text-white">{getDaysTogether().toLocaleString()}</p>
-                                                <p className="text-[10px] font-bold text-pink-100 uppercase">Days Together 💕</p>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Dark Mode Toggle */}
-                                    <div className={`flex items-center justify-between p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                                    { key: 'games', emoji: '🎮', label: 'Game Alerts', desc: 'When it\'s your turn' },
+                                    { key: 'bridge', emoji: '💬', label: 'Bridge Messages', desc: 'New messages from partner' },
+                                    { key: 'dateReminders', emoji: '💕', label: 'Date Reminders', desc: 'Reminder for date nights' },
+                                    { key: 'messageReminders', emoji: '💌', label: 'Daily Love Nudge', desc: 'Reminder to send a message' }
+                                ].map(pref => (
+                                    <div key={pref.key} className={`flex items-center justify-between p-3 rounded-xl ${darkMode ? 'bg-slate-700/50' : 'bg-slate-50'}`}>
                                         <div className="flex items-center gap-3">
-                                            <Moon className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-slate-500'}`} />
-                                            <span className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Dark Mode</span>
+                                            <span className="text-xl">{pref.emoji}</span>
+                                            <div>
+                                                <p className={`text-xs font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>{pref.label}</p>
+                                                <p className="text-[10px] text-slate-400">{pref.desc}</p>
+                                            </div>
                                         </div>
-                                        <button
-                                            onClick={() => { const newVal = !darkMode; setDarkMode(newVal); localStorage.setItem('dark_mode', newVal.toString()); }}
-                                            className={`w-14 h-7 rounded-full transition-all ${darkMode ? 'bg-yellow-500' : 'bg-slate-300'} relative`}
-                                        >
-                                            <div className={`w-6 h-6 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-7' : 'left-0.5'}`} />
+                                        <button onClick={() => updateNotifyPref(pref.key, !notifyPrefs[pref.key])} className={`w-12 h-6 rounded-full transition-all ${notifyPrefs[pref.key] ? 'bg-rose-500' : 'bg-slate-300'}`}>
+                                            <div className={`w-5 h-5 bg-white rounded-full shadow transition-all ${notifyPrefs[pref.key] ? 'ml-6' : 'ml-0.5'}`} />
                                         </button>
                                     </div>
-
-                                    {/* Pet Names */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>His Pet Name</label>
-                                            <input
-                                                value={husbandPetName}
-                                                onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
-                                                placeholder="honey"
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>Her Pet Name</label>
-                                            <input
-                                                value={wifePetName}
-                                                onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
-                                                placeholder="sweetie"
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Love Languages */}
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-blue-400 uppercase ml-1">His Language</label>
-                                            <select
-                                                value={hisLoveLanguage}
-                                                onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
-                                            >
-                                                <option>Physical Touch</option>
-                                                <option>Words of Affirmation</option>
-                                                <option>Quality Time</option>
-                                                <option>Acts of Service</option>
-                                                <option>Receiving Gifts</option>
-                                            </select>
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-[9px] font-black text-rose-400 uppercase ml-1">Her Language</label>
-                                            <select
-                                                value={herLoveLanguage}
-                                                onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
-                                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
-                                            >
-                                                <option>Words of Affirmation</option>
-                                                <option>Physical Touch</option>
-                                                <option>Quality Time</option>
-                                                <option>Acts of Service</option>
-                                                <option>Receiving Gifts</option>
-                                            </select>
-                                        </div>
-                                    </div>
-
-                                    <button onClick={() => setShowKidManager(true)} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-purple-900/50 text-purple-400 border border-purple-700' : 'bg-purple-50 text-purple-600 border border-purple-200'}`}>
-                                        <Users className="w-4 h-4" /> Manage Kids
-                                    </button>
-
-                                    <button onClick={() => { const newPin = prompt('New 4-digit PIN:'); if (newPin && /^\d{4}$/.test(newPin)) { localStorage.setItem(`${role}_pin`, newPin); alert('PIN updated!'); } }} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                                        <Lock className="w-4 h-4" /> Change PIN
-                                    </button>
-
-                                    {/* Milestones */}
-                                    <div className="space-y-3">
-                                        <p className="text-[10px] font-black text-amber-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Trophy className="w-3 h-3" /> Milestones</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {checkMilestones().length > 0 ? checkMilestones().map(m => (
-                                                <span key={m.id} className={`px-4 py-2 border rounded-2xl text-xs font-bold ${darkMode ? 'bg-amber-900/30 border-amber-700 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{m.emoji} {m.label}</span>
-                                            )) : <p className="text-xs italic text-slate-400">Keep sharing to earn badges!</p>}
-                                        </div>
-                                    </div>
-
-                                    <button onClick={exportJournalData} disabled={journalItems.length === 0} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-green-900/50 text-green-400 border border-green-700' : 'bg-green-50 text-green-600 border border-green-200'} disabled:opacity-50`}>
-                                        <Save className="w-4 h-4" /> Export Data
-                                    </button>
-                                </div>
-                            )}
-
-                        </div>
-                    )
-                    }
-
-                    {/* KID HUB VIEW */}
-                    {view === 'kid_hub' && currentKid && (
-                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                            {/* Kid Header */}
-                            {/* NEW: Parent Context Banner */}
-                            {(role === 'his' || role === 'hers') && (
-                                <div className="bg-amber-100 text-amber-900 px-4 py-2 text-xs font-bold text-center rounded-xl flex items-center justify-center gap-2">
-                                    <span>👀</span>
-                                    <span>Viewing as {currentKid.name} (Managed by {role === 'his' ? 'Dad' : 'Mom'})</span>
-                                </div>
-                            )}
-                            <div className="text-center space-y-2 pt-2 relative">
-                                {role && (
-                                    <button
-                                        onClick={() => setView('parent_hub')}
-                                        className="absolute top-0 left-0 p-2 text-slate-400 hover:text-purple-600 transition-colors"
-                                        title="Back to Dashboard"
-                                    >
-                                        <ChevronRight className="w-6 h-6 rotate-180" />
-                                    </button>
-                                )}
-                                <button
-                                    onClick={() => {
-                                        if (window.confirm('Switch users?')) {
-                                            setCurrentKid(null);
-                                            setPortalMode('couple');
-                                            localStorage.removeItem('current_kid_id');
-                                            localStorage.removeItem('portal_mode');
-                                            setView('home');
-                                        }
-                                    }}
-                                    className="absolute top-0 right-0 p-2 text-slate-400 hover:text-rose-500"
-                                    title="Sign Out"
-                                >
-                                    👋
-                                </button>
-                                <span className="text-6xl">{currentKid.avatar || '🧒'}</span>
-                                <h2 className={`text-2xl font-black tracking-tighter ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
-                                    Hi, {currentKid.name}! 👋
-                                </h2>
-                            </div>
-
-                            {/* Kid Tabs */}
-                            <div className={`flex p-1.5 rounded-2xl border shadow-sm ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                {[
-                                    { id: 'journal', label: '📔 Journal' },
-                                    { id: 'games', label: '🎮 Games' },
-                                    { id: 'bridge', label: '💬 Parents' },
-                                    { id: 'me', label: '⭐ Me' }
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        onClick={() => tab.id === 'games' ? setView('family_games') : setActiveTab(tab.id)}
-                                        className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all ${activeTab === tab.id ? 'bg-purple-600 text-white shadow-lg' : darkMode ? 'text-slate-400' : 'text-slate-500'}`}
-                                    >
-                                        {tab.label}
-                                    </button>
                                 ))}
                             </div>
+                        )}
+                    </div>
 
-                            {/* Journal Tab */}
-                            {activeTab === 'journal' && (
-                                <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                    <h3 className={`text-lg font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Today's Journal</h3>
-
-                                    {/* Mood Selector */}
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">How are you feeling?</p>
-                                        <div className="flex flex-wrap gap-2 justify-center">
-                                            {['😊', '😢', '😠', '😰', '😴', '🤗', '🤔', '🎉'].map(emoji => (
-                                                <button
-                                                    key={emoji}
-                                                    onClick={() => setKidJournalItems(prev => ({ ...prev, mood: emoji }))}
-                                                    className={`text-2xl p-2 rounded-xl transition-all ${kidJournalItems.mood === emoji ? 'bg-purple-100 scale-125' : 'hover:bg-slate-100'}`}
-                                                >
-                                                    {emoji}
-                                                </button>
-                                            ))}
+                    {/* Daily Reminders */}
+                    <div className="space-y-3">
+                        {['Morning', 'Lunch', 'Evening'].map(time => {
+                            const nudge = NUDGE_DATA[time];
+                            const NudgeIcon = nudge.icon;
+                            const iphoneText = `${time} Unity Nudge (${nudge.time})\n${nudge.prompt}\n${nudge.suggestion}`;
+                            return (
+                                <div key={time} className={`p-4 border rounded-2xl shadow-lg space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+                                    <div className="flex items-start gap-3">
+                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${darkMode ? 'bg-rose-900/30' : 'bg-rose-50'}`}>
+                                            <NudgeIcon className="w-5 h-5 text-rose-600" />
                                         </div>
-                                    </div>
-
-                                    {/* Journal Prompts */}
-                                    <div className="space-y-2">
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Pick a prompt or write freely</p>
-                                        <div className="flex flex-wrap gap-2">
-                                            {[
-                                                'What made me smile today?',
-                                                'Something I learned',
-                                                'A challenge I faced',
-                                                'What I\'m grateful for',
-                                                'My goal for tomorrow'
-                                            ].map(prompt => (
-                                                <button
-                                                    key={prompt}
-                                                    onClick={() => setInputText(prompt + ' ')}
-                                                    className={`px-3 py-1.5 text-xs font-bold rounded-full border transition-all ${darkMode ? 'border-slate-600 text-slate-300 hover:bg-slate-700' : 'border-purple-200 text-purple-600 hover:bg-purple-50'}`}
-                                                >
-                                                    {prompt}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-
-                                    {/* Journal Entry Input */}
-                                    <textarea
-                                        value={inputText}
-                                        onChange={(e) => setInputText(e.target.value)}
-                                        placeholder="Write about your day..."
-                                        className={`w-full h-32 p-4 rounded-2xl border resize-none text-sm outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
-                                    />
-
-                                    {/* Save Button */}
-                                    <button
-                                        onClick={async () => {
-                                            if (!inputText.trim()) { alert('Write something first!'); return; }
-                                            try {
-                                                const journalRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal');
-                                                await addDoc(journalRef, {
-                                                    content: inputText,
-                                                    mood: kidJournalItems.mood || '😊',
-                                                    timestamp: serverTimestamp(),
-                                                    viewedByParent: null
-                                                });
-                                                setInputText('');
-                                                setKidJournalItems({ mood: null });
-                                                alert('Journal saved! 📔');
-                                            } catch (err) {
-                                                console.error('Kid journal save error:', err);
-                                                alert('Oops! Try again.');
-                                            }
-                                        }}
-                                        className="w-full py-4 bg-purple-600 text-white font-bold rounded-2xl text-sm"
-                                    >
-                                        ✏️ Save Journal Entry
-                                    </button>
-
-                                    {/* NEW: Journal History */}
-                                    <div className="space-y-3 pt-4 border-t border-slate-100">
-                                        <div className="flex justify-between items-center">
-                                            <h4 className={`text-xs font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-400'}`}>
-                                                {role === 'his' || role === 'hers' ? '🔒 Kid Journal' : 'Your Past Entries'}
-                                            </h4>
-                                            {(role === 'his' || role === 'hers') && (
-                                                <button
-                                                    onClick={() => setJournalPrivacy(!journalPrivacy)}
-                                                    className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg"
-                                                >
-                                                    {journalPrivacy ? '👁️ Reveal All' : '🔒 Hide Content'}
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        {kidJournalEntries.length === 0 ? (
-                                            <p className="text-xs text-slate-400 italic text-center">No entries yet. Start writing!</p>
-                                        ) : (
-                                            <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-                                                {kidJournalEntries.map(entry => {
-                                                    const isParent = role === 'his' || role === 'hers';
-                                                    const isBlurred = isParent && journalPrivacy;
-
-                                                    return (
-                                                        <div key={entry.id} className={`relative p-4 rounded-2xl border transition-all ${darkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50 border-slate-100'}`}>
-                                                            {/* Header */}
-                                                            <div className="flex justify-between items-start mb-2">
-                                                                <span className="text-xl">{entry.mood || '😊'}</span>
-                                                                <div className="text-right">
-                                                                    <span className="text-[10px] text-slate-400 font-bold uppercase block">
-                                                                        {entry.timestamp ? new Date(entry.timestamp.seconds * 1000).toLocaleDateString() : 'Just now'}
-                                                                    </span>
-                                                                    {/* Read Receipt (Visible to everyone) */}
-                                                                    {entry.readByParent && (
-                                                                        <span className="text-[9px] font-bold text-green-500 flex items-center justify-end gap-0.5">
-                                                                            <Check className="w-3 h-3" /> Read by Parent
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Content with Blur */}
-                                                            <div className={`relative ${isBlurred ? 'blur-sm select-none' : ''}`}>
-                                                                <p className={`text-sm mb-3 ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{entry.content}</p>
-                                                            </div>
-
-                                                            {/* Protected Overlay */}
-                                                            {isBlurred && (
-                                                                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-white/10 backdrop-blur-[1px]">
-                                                                    <button
-                                                                        onClick={() => setJournalPrivacy(false)}
-                                                                        className="px-3 py-1.5 bg-slate-800 text-white text-[10px] font-bold rounded-full shadow-lg"
-                                                                    >
-                                                                        🔒 Private • Tap to Reveal
-                                                                    </button>
-                                                                </div>
-                                                            )}
-
-                                                            {/* Actions */}
-                                                            <div className="flex justify-end gap-2 mt-2">
-                                                                {/* Parent: Mark as Read */}
-                                                                {isParent && !entry.readByParent && !isBlurred && (
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            try {
-                                                                                const entryRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal', entry.id);
-                                                                                await updateDoc(entryRef, { readByParent: true });
-                                                                            } catch (err) { console.error(err); }
-                                                                        }}
-                                                                        className="px-3 py-1.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full hover:bg-green-200"
-                                                                    >
-                                                                        ✓ Mark as Read
-                                                                    </button>
-                                                                )}
-
-                                                                {/* Kid: Share Button (Existing) */}
-                                                                {!isParent && (
-                                                                    <button
-                                                                        onClick={async () => {
-                                                                            if (window.confirm('Share this entry with Mom & Dad?')) {
-                                                                                try {
-                                                                                    const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
-                                                                                    await addDoc(bridgeRef, {
-                                                                                        content: `[Shared Journal Entry] ${entry.content}`,
-                                                                                        from: currentKid.name,
-                                                                                        authorId: currentKid.id,
-                                                                                        timestamp: serverTimestamp(),
-                                                                                        readByParent: false
-                                                                                    });
-                                                                                    alert('Shared to Parents! 📤');
-                                                                                } catch (err) {
-                                                                                    console.error(err);
-                                                                                    alert('Failed to share.');
-                                                                                }
-                                                                            }
-                                                                        }}
-                                                                        className="px-3 py-1.5 bg-green-100 text-green-700 text-[10px] font-bold rounded-full hover:bg-green-200"
-                                                                    >
-                                                                        Share with Parents 📤
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                        <div className="flex-1">
+                                            <div className="flex items-center gap-2">
+                                                <p className={`text-lg font-black tracking-tight ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{time} Check-in</p>
+                                                <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${darkMode ? 'bg-slate-700 text-slate-400' : 'bg-slate-100 text-slate-400'}`}>{nudge.time}</span>
                                             </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Bridge Tab - Messages to Parents */}
-                            {activeTab === 'bridge' && (
-                                <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                    <h3 className={`text-lg font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Message Mom & Dad</h3>
-
-                                    {/* Quick Messages */}
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {[
-                                            { emoji: '❤️', text: 'I love you!' },
-                                            { emoji: '🙏', text: 'Thank you for everything' },
-                                            { emoji: '🤗', text: 'I need a hug' },
-                                            { emoji: '💬', text: 'Can we talk later?' },
-                                            { emoji: '😊', text: 'Had a great day!' },
-                                            { emoji: '🎯', text: 'I did my best today' }
-                                        ].map(msg => (
-                                            <button
-                                                key={msg.text}
-                                                onClick={async () => {
-                                                    try {
-                                                        const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
-                                                        await addDoc(bridgeRef, {
-                                                            content: `${msg.emoji} ${msg.text}`,
-                                                            from: currentKid.name,
-                                                            authorId: currentKid.id,
-                                                            timestamp: serverTimestamp(),
-                                                            readByParent: false
-                                                        });
-                                                        alert('Message sent to Mom & Dad! 💕');
-                                                    } catch (err) {
-                                                        console.error('Kid bridge error:', err);
-                                                    }
-                                                }}
-                                                className={`p-4 rounded-2xl border text-left transition-all active:scale-95 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100 hover:bg-purple-100'}`}
-                                            >
-                                                <span className="text-2xl block mb-1">{msg.emoji}</span>
-                                                <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-700'}`}>{msg.text}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-
-                                    {/* Custom Message (Moved UP) */}
-                                    <div className="space-y-2 pt-2 border-t border-slate-200">
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">Or write your own</p>
-                                        <div className="flex gap-2">
-                                            <textarea
-                                                value={inputText}
-                                                onChange={(e) => setInputText(e.target.value)}
-                                                placeholder="Write a message..."
-                                                className={`flex-1 h-12 p-3 rounded-xl border resize-none text-sm outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
-                                            />
-                                            <button
-                                                onClick={async () => {
-                                                    if (!inputText.trim()) return;
-                                                    try {
-                                                        const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
-                                                        await addDoc(bridgeRef, {
-                                                            content: inputText,
-                                                            from: currentKid.name,
-                                                            authorId: currentKid.id,
-                                                            timestamp: serverTimestamp(),
-                                                            readByParent: false
-                                                        });
-                                                        setInputText('');
-                                                        // alert('Message sent! 💕'); // Removed alert to keep flow smooth like a chat
-                                                    } catch (err) {
-                                                        console.error('Kid bridge error:', err);
-                                                    }
-                                                }}
-                                                className="w-12 bg-purple-600 text-white font-bold rounded-xl flex items-center justify-center text-xl"
-                                            >
-                                                ➤
-                                            </button>
+                                            <p className="text-sm font-bold text-rose-600 mt-1">{nudge.prompt}</p>
+                                            <p className={`text-xs mt-1 italic ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>"{nudge.suggestion}"</p>
                                         </div>
                                     </div>
-
-                                    {/* Messages History (Moved DOWN) */}
-                                    <div className="space-y-3 max-h-[300px] overflow-y-auto p-2 bg-slate-50/50 rounded-xl border border-slate-100/50 flex flex-col-reverse">
-                                        {/* Reversed logic: Data is chronological (old->new). We displayed them top-down. 
-                                            If we want "chat style" usually input is at bottom. 
-                                            BUT User requested: "move the conversation history... below the new message feature".
-                                            So Input is TOP, History is BOTTOM.
-                                            Let's keep standard list rendering.
-                                        */}
-                                        {kidBridgeMessages.length === 0 ? (
-                                            <p className="text-xs text-center text-slate-400 py-4 italic">No messages yet. Say hi! 👋</p>
-                                        ) : (
-                                            kidBridgeMessages.map(msg => {
-                                                const isFromKid = msg.authorId === currentKid.id || msg.from === currentKid.name;
-                                                return (
-                                                    <div key={msg.id} className={`flex ${isFromKid ? 'justify-end' : 'justify-start'}`}>
-                                                        <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-bold ${isFromKid
-                                                            ? (darkMode ? 'bg-purple-600 text-white rounded-tr-none' : 'bg-purple-100 text-purple-900 rounded-tr-none')
-                                                            : (darkMode ? 'bg-slate-700 text-slate-200 rounded-tl-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none')
-                                                            }`}>
-                                                            {!isFromKid && <p className="text-[9px] font-black opacity-50 mb-1 uppercase">{msg.from}</p>}
-                                                            {msg.content}
-                                                        </div>
-                                                    </div>
-                                                );
-                                            })
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Me Tab */}
-                            {/* Me & Settings Tab */}
-                            {activeTab === 'me' && (
-                                <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                    <div className="text-center space-y-2">
-                                        <span className="text-6xl animate-bounce-slow">{currentKid.avatar || '🧒'}</span>
-                                        <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{currentKid.name}</h3>
-                                    </div>
-
-                                    {/* Days Old Counter */}
-                                    {currentKid.birthday ? (
-                                        <div className={`p-4 rounded-2xl text-center space-y-1 ${darkMode ? 'bg-slate-700' : 'bg-gradient-to-r from-purple-100 to-pink-100'}`}>
-                                            <p className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-purple-600'}`}>I have been alive for</p>
-                                            <p className={`text-4xl font-black ${darkMode ? 'text-white' : 'text-purple-700'}`}>
-                                                {Math.floor((new Date() - new Date(currentKid.birthday)) / (1000 * 60 * 60 * 24)).toLocaleString()}
-                                            </p>
-                                            <p className={`text-xs font-bold ${darkMode ? 'text-slate-400' : 'text-purple-600'}`}>Days! 🎂</p>
-                                        </div>
-                                    ) : (
-                                        <div className={`p-4 rounded-2xl text-center border-dashed border-2 ${darkMode ? 'border-slate-600 bg-slate-700' : 'border-purple-200 bg-purple-50'}`}>
-                                            <p className="text-xs text-slate-400 mb-2">When is your birthday?</p>
-                                            <input
-                                                type="date"
-                                                className={`p-2 rounded-xl text-sm font-bold text-center outline-none ${darkMode ? 'bg-slate-600 text-white' : 'bg-white text-purple-600 border border-purple-100'}`}
-                                                onChange={async (e) => {
-                                                    const newBirthday = e.target.value;
-                                                    try {
-                                                        const kidRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id);
-                                                        await updateDoc(kidRef, { birthday: newBirthday });
-                                                        setCurrentKid(prev => ({ ...prev, birthday: newBirthday }));
-                                                    } catch (err) {
-                                                        console.error('Error updating birthday:', err);
-                                                    }
-                                                }}
-                                            />
-                                        </div>
-                                    )}
-
-                                    {/* Settings Section */}
-                                    <div className="space-y-2 pt-2">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase ml-1">Settings</p>
-
-                                        {/* Dark Mode Toggle */}
-                                        <button
-                                            onClick={() => {
-                                                const newMode = !darkMode;
-                                                setDarkMode(newMode);
-                                                localStorage.setItem('theme', newMode ? 'dark' : 'light');
-                                            }}
-                                            className={`w-full p-4 rounded-2xl border flex items-center justify-between transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-white' : 'bg-slate-50 border-slate-100 text-slate-700'}`}
-                                        >
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-xl">{darkMode ? '🌙' : '☀️'}</span>
-                                                <span className="text-sm font-bold">{darkMode ? 'Dark Mode' : 'Light Mode'}</span>
-                                            </div>
-                                            <div className={`w-10 h-6 rounded-full p-1 transition-colors ${darkMode ? 'bg-purple-600' : 'bg-slate-300'}`}>
-                                                <div className={`w-4 h-4 bg-white rounded-full shadow-sm transition-transform ${darkMode ? 'translate-x-4' : 'translate-x-0'}`} />
-                                            </div>
+                                    <div className="flex gap-2 pt-2 border-t border-slate-50">
+                                        <button onClick={() => window.open(`https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`Unity Bridge: ${nudge.prompt}`)}&details=${encodeURIComponent(`Reminder: ${nudge.suggestion}`)}&recur=RRULE:FREQ=DAILY`, '_blank')} className={`flex-1 p-3 rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all ${darkMode ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-600'}`}>
+                                            <Calendar className="w-3 h-3" /> Go-Cal
                                         </button>
-
-                                        {/* Edit Birthday (if visible) */}
-                                        {currentKid.birthday && (
-                                            <button
-                                                onClick={() => {
-                                                    const newDate = prompt("Enter new birthday (YYYY-MM-DD):", currentKid.birthday);
-                                                    if (newDate) {
-                                                        // fast update
-                                                        const kidRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id);
-                                                        updateDoc(kidRef, { birthday: newDate });
-                                                        setCurrentKid(prev => ({ ...prev, birthday: newDate }));
-                                                    }
-                                                }}
-                                                className={`w-full p-4 rounded-2xl border text-left transition-all ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-300' : 'bg-white border-slate-100 text-slate-600'}`}
-                                            >
-                                                <span className="text-xs font-bold">🎂 Change Birthday</span>
-                                            </button>
-                                        )}
+                                        <button onClick={() => copyToClipboard(iphoneText, `n-${time}`)} className="flex-1 p-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center justify-center gap-2 transition-all">
+                                            {copiedId === `n-${time}` ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                            {copiedId === `n-${time}` ? 'Copied' : 'iPhone'}
+                                        </button>
                                     </div>
-
-                                    {/* Logout */}
-                                    <button
-                                        onClick={() => {
-                                            if (window.confirm('Are you sure you want to switch users?')) {
-                                                setCurrentKid(null);
-                                                setPortalMode('couple');
-                                                localStorage.removeItem('current_kid_id');
-                                                localStorage.removeItem('portal_mode');
-                                                setView('home');
-                                            }
-                                        }}
-                                        className={`w-full py-4 rounded-2xl text-sm font-bold mt-4 ${darkMode ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-rose-50 text-rose-600 hover:bg-rose-100'}`}
-                                    >
-                                        👋 Switch User
-                                    </button>
                                 </div>
-                            )}
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'settings' && (
+                <div className={`rounded-[2.5rem] shadow-xl border p-6 space-y-6 animate-in fade-in ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
+                    <div className="flex items-center gap-3">
+                        <Settings className="w-5 h-5 text-slate-500" />
+                        <h2 className={`font-black text-sm uppercase ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Settings & Stats</h2>
+                    </div>
+
+                    {/* Anniversary Date */}
+                    <div className="space-y-2">
+                        <label className="text-[10px] font-black text-pink-500 uppercase ml-2 tracking-widest flex items-center gap-2">
+                            <Heart className="w-3 h-3" /> Anniversary Date
+                        </label>
+                        <input
+                            type="date"
+                            value={anniversaryDate}
+                            onChange={(e) => saveAnniversary(e.target.value)}
+                            className={`w-full p-4 rounded-2xl text-sm border outline-none text-center ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-pink-50 border-pink-100 focus:border-pink-300'}`}
+                        />
+                        {getDaysTogether() !== null && (
+                            <div className="text-center py-4 bg-gradient-to-r from-pink-500 to-rose-500 rounded-2xl">
+                                <p className="text-4xl font-black text-white">{getDaysTogether().toLocaleString()}</p>
+                                <p className="text-[10px] font-bold text-pink-100 uppercase">Days Together 💕</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Dark Mode Toggle */}
+                    <div className={`flex items-center justify-between p-4 rounded-2xl ${darkMode ? 'bg-slate-700' : 'bg-slate-50'}`}>
+                        <div className="flex items-center gap-3">
+                            <Moon className={`w-5 h-5 ${darkMode ? 'text-yellow-400' : 'text-slate-500'}`} />
+                            <span className={`text-sm font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Dark Mode</span>
                         </div>
-                    )}
+                        <button
+                            onClick={() => { const newVal = !darkMode; setDarkMode(newVal); localStorage.setItem('dark_mode', newVal.toString()); }}
+                            className={`w-14 h-7 rounded-full transition-all ${darkMode ? 'bg-yellow-500' : 'bg-slate-300'} relative`}
+                        >
+                            <div className={`w-6 h-6 rounded-full bg-white shadow absolute top-0.5 transition-all ${darkMode ? 'left-7' : 'left-0.5'}`} />
+                        </button>
+                    </div>
 
-                    {/* PARENT HUB VIEW (Family Mode) */}
-                    {view === 'parent_hub' && (
-                        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                            {/* Header */}
-                            <div className="text-center space-y-2 pt-2">
-                                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-purple-900 border-purple-700' : 'bg-purple-100 border-white'}`}>
-                                    <span className="text-3xl">{role === 'his' ? '👨' : '👩'}</span>
-                                </div>
-                                <h2 className={`text-2xl font-black tracking-tighter ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
-                                    {role === 'his' ? (husbandName || 'Dad') : (wifeName || 'Mom')}'s Dashboard
-                                </h2>
-                                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Family Management Hub</p>
-                            </div>
+                    {/* Pet Names */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-blue-400' : 'text-blue-500'}`}>His Pet Name</label>
+                            <input
+                                value={husbandPetName}
+                                onChange={(e) => { setHusbandPetName(e.target.value); localStorage.setItem('husband_pet_name', e.target.value); saveSettings({ husbandPetName: e.target.value }); }}
+                                placeholder="honey"
+                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100 focus:border-blue-300'}`}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <label className={`text-[9px] font-black uppercase ml-1 ${darkMode ? 'text-rose-400' : 'text-rose-500'}`}>Her Pet Name</label>
+                            <input
+                                value={wifePetName}
+                                onChange={(e) => { setWifePetName(e.target.value); localStorage.setItem('wife_pet_name', e.target.value); saveSettings({ wifePetName: e.target.value }); }}
+                                placeholder="sweetie"
+                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100 focus:border-rose-300'}`}
+                            />
+                        </div>
+                    </div>
 
-                            {/* Kids Overview */}
-                            <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                <div className="flex justify-between items-center">
-                                    <h3 className={`text-lg font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👧👦 Your Kids</h3>
-                                    <button
-                                        onClick={() => setShowKidManager(true)}
-                                        className="text-[10px] font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full"
-                                    >
-                                        + Add Kid
-                                    </button>
-                                </div>
-
-                                {kidProfiles.length === 0 ? (
-                                    <div className="text-center py-8">
-                                        <span className="text-4xl">👨‍👩‍👧‍👦</span>
-                                        <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>No kids added yet</p>
-                                        <button
-                                            onClick={() => setShowKidManager(true)}
-                                            className="mt-4 px-6 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
-                                        >
-                                            Add Your First Kid
-                                        </button>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-3">
-                                        {kidProfiles.map(kid => (
-                                            <button
-                                                key={kid.id}
-                                                onClick={() => { setCurrentKid(kid); setView('kid_hub'); setActiveTab('journal'); }}
-                                                className={`w-full p-4 rounded-2xl border text-left transition-all active:scale-98 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100 hover:bg-purple-100'}`}
-                                            >
-                                                <div className="flex items-center gap-4">
-                                                    <span className="text-4xl">{kid.avatar || '🧒'}</span>
-                                                    <div className="flex-1">
-                                                        <h4 className={`font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</h4>
-                                                        <p className="text-[10px] text-purple-500 font-bold">Tap to view journal & messages</p>
-                                                    </div>
-                                                    <ChevronRight className={`w-5 h-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} />
-                                                </div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Quick Actions */}
-                            <div className="grid grid-cols-3 gap-3">
-                                <button
-                                    onClick={() => setView('family_games')}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 relative ${darkMode ? 'bg-purple-900/50 border-purple-700' : 'bg-purple-50 border-purple-200'}`}
-                                >
-                                    <span className="text-2xl">🎮</span>
-                                    <span className={`text-xs font-bold ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>Family Games</span>
-                                    {familyActiveGames.length > 0 && (
-                                        <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center">{familyActiveGames.length}</span>
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => setShowKidManager(true)}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
-                                >
-                                    <span className="text-2xl">⚙️</span>
-                                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Manage Kids</span>
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        setPortalMode('couple');
-                                        setView('hub');
-                                        setAffectionType('primary');
-                                    }}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
-                                >
-                                    <span className="text-2xl">💑</span>
-                                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Couple Portal</span>
-                                </button>
-                                <button
-                                    onClick={() => setShowFamilyCalendar(!showFamilyCalendar)}
-                                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-amber-900/30 border-amber-700' : 'bg-amber-50 border-amber-200'}`}
-                                >
-                                    <span className="text-2xl">📅</span>
-                                    <span className={`text-xs font-bold ${darkMode ? 'text-amber-300' : 'text-amber-600'}`}>{showFamilyCalendar ? 'Hide Cal' : 'Family Cal'}</span>
-                                </button>
-                            </div>
-
-                            {/* Family Calendar View */}
-                            {showFamilyCalendar && (
-                                <div className="animate-in fade-in slide-in-from-top-4">
-                                    <CalendarView
-                                        calendarId="ZmFtaWx5MDY4MDk0MTIyMTIxNzk0OTA5NTJAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ"
-                                        title="Family Calendar"
-                                        darkMode={darkMode}
-                                    />
-                                </div>
-                            )}
-
-                            {/* Logout */}
-                            <button
-                                onClick={() => {
-                                    setRole(null);
-                                    setCurrentKid(null);
-                                    localStorage.removeItem('user_role');
-                                    localStorage.removeItem('current_kid_id');
-                                    localStorage.setItem('unity_bridge_view', 'home');
-                                    setView('home');
-                                }}
-                                className={`w-full py-4 rounded-2xl text-sm font-bold ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+                    {/* Love Languages */}
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-blue-400 uppercase ml-1">His Language</label>
+                            <select
+                                value={hisLoveLanguage}
+                                onChange={(e) => { setHisLoveLanguage(e.target.value); localStorage.setItem('his_love_language', e.target.value); saveSettings({ hisLoveLanguage: e.target.value }); }}
+                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-blue-50 border-blue-100'}`}
                             >
-                                👋 Switch User
+                                <option>Physical Touch</option>
+                                <option>Words of Affirmation</option>
+                                <option>Quality Time</option>
+                                <option>Acts of Service</option>
+                                <option>Receiving Gifts</option>
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-rose-400 uppercase ml-1">Her Language</label>
+                            <select
+                                value={herLoveLanguage}
+                                onChange={(e) => { setHerLoveLanguage(e.target.value); localStorage.setItem('her_love_language', e.target.value); saveSettings({ herLoveLanguage: e.target.value }); }}
+                                className={`w-full p-2.5 rounded-xl text-xs border outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-rose-50 border-rose-100'}`}
+                            >
+                                <option>Words of Affirmation</option>
+                                <option>Physical Touch</option>
+                                <option>Quality Time</option>
+                                <option>Acts of Service</option>
+                                <option>Receiving Gifts</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <button onClick={() => setShowKidManager(true)} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-purple-900/50 text-purple-400 border border-purple-700' : 'bg-purple-50 text-purple-600 border border-purple-200'}`}>
+                        <Users className="w-4 h-4" /> Manage Kids
+                    </button>
+
+                    <button onClick={() => { const newPin = prompt('New 4-digit PIN:'); if (newPin && /^\d{4}$/.test(newPin)) { localStorage.setItem(`${role}_pin`, newPin); alert('PIN updated!'); } }} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-slate-700 text-slate-300 border border-slate-600' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                        <Lock className="w-4 h-4" /> Change PIN
+                    </button>
+
+                    {/* Milestones */}
+                    <div className="space-y-3">
+                        <p className="text-[10px] font-black text-amber-500 uppercase ml-2 tracking-widest flex items-center gap-2"><Trophy className="w-3 h-3" /> Milestones</p>
+                        <div className="flex flex-wrap gap-2">
+                            {checkMilestones().length > 0 ? checkMilestones().map(m => (
+                                <span key={m.id} className={`px-4 py-2 border rounded-2xl text-xs font-bold ${darkMode ? 'bg-amber-900/30 border-amber-700 text-amber-400' : 'bg-amber-50 border-amber-200 text-amber-700'}`}>{m.emoji} {m.label}</span>
+                            )) : <p className="text-xs italic text-slate-400">Keep sharing to earn badges!</p>}
+                        </div>
+                    </div>
+
+                    <button onClick={exportJournalData} disabled={journalItems.length === 0} className={`w-full py-4 rounded-2xl text-sm font-bold flex items-center justify-center gap-2 ${darkMode ? 'bg-green-900/50 text-green-400 border border-green-700' : 'bg-green-50 text-green-600 border border-green-200'} disabled:opacity-50`}>
+                        <Save className="w-4 h-4" /> Export Data
+                    </button>
+                </div>
+            )}
+
+        </div>
+    )
+}
+
+{/* KID HUB VIEW */ }
+{
+    view === 'kid_hub' && (
+        <KidPortal
+            currentKid={currentKid}
+            role={role}
+            coupleCode={coupleCode}
+            db={db}
+            darkMode={darkMode}
+            setView={setView}
+            setCurrentKid={setCurrentKid}
+            setPortalMode={setPortalMode}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            inputText={inputText}
+            setInputText={setInputText}
+            setDarkMode={setDarkMode}
+        />
+    )
+}
+
+{/* PARENT HUB VIEW (Family Mode) */ }
+{
+    view === 'parent_hub' && (
+        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+            {/* Header */}
+            <div className="text-center space-y-2 pt-2">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-purple-900 border-purple-700' : 'bg-purple-100 border-white'}`}>
+                    <span className="text-3xl">{role === 'his' ? '👨' : '👩'}</span>
+                </div>
+                <h2 className={`text-2xl font-black tracking-tighter ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>
+                    {role === 'his' ? (husbandName || 'Dad') : (wifeName || 'Mom')}'s Dashboard
+                </h2>
+                <p className={`text-xs ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Family Management Hub</p>
+            </div>
+
+            {/* Kids Overview */}
+            <div className={`rounded-3xl shadow-xl border p-6 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
+                <div className="flex justify-between items-center">
+                    <h3 className={`text-lg font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👧👦 Your Kids</h3>
+                    <button
+                        onClick={() => setShowKidManager(true)}
+                        className="text-[10px] font-bold text-purple-600 bg-purple-50 px-3 py-1.5 rounded-full"
+                    >
+                        + Add Kid
+                    </button>
+                </div>
+
+                {kidProfiles.length === 0 ? (
+                    <div className="text-center py-8">
+                        <span className="text-4xl">👨‍👩‍👧‍👦</span>
+                        <p className={`text-sm mt-2 ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>No kids added yet</p>
+                        <button
+                            onClick={() => setShowKidManager(true)}
+                            className="mt-4 px-6 py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
+                        >
+                            Add Your First Kid
+                        </button>
+                    </div>
+                ) : (
+                    <div className="space-y-3">
+                        {kidProfiles.map(kid => (
+                            <button
+                                key={kid.id}
+                                onClick={() => { setCurrentKid(kid); setView('kid_hub'); setActiveTab('journal'); }}
+                                className={`w-full p-4 rounded-2xl border text-left transition-all active:scale-98 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100 hover:bg-purple-100'}`}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <span className="text-4xl">{kid.avatar || '🧒'}</span>
+                                    <div className="flex-1">
+                                        <h4 className={`font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</h4>
+                                        <p className="text-[10px] text-purple-500 font-bold">Tap to view journal & messages</p>
+                                    </div>
+                                    <ChevronRight className={`w-5 h-5 ${darkMode ? 'text-slate-500' : 'text-slate-400'}`} />
+                                </div>
                             </button>
-                        </div>
-                    )}
-
-                    {/* FAMILY GAMES HUB VIEW */}
-                    {view === 'family_games' && (
-                        <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
-                            {/* NEW: Parent Context Banner */}
-                            {(role === 'his' || role === 'hers') && currentKid && (
-                                <div className="bg-amber-100 text-amber-900 px-4 py-2 text-xs font-bold text-center rounded-xl mb-2 flex items-center justify-center gap-2">
-                                    <span>👀</span>
-                                    <span>Viewing as {currentKid.name} (Managed by {role === 'his' ? 'Dad' : 'Mom'})</span>
-                                </div>
-                            )}
-
-                            {/* Header */}
-                            <div className="text-center space-y-1 pt-1">
-                                <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-purple-900 border-purple-700' : 'bg-purple-100 border-white'}`}>
-                                    <Gamepad2 className="w-7 h-7 text-purple-600" />
-                                </div>
-                                <h2 className={`text-xl font-black tracking-tighter ${darkMode ? 'text-slate-100' : 'text-slate-800'}`}>Family Games</h2>
-                                <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Challenge anyone in your family!</p>
-                            </div>
-
-                            {/* Tab Switcher */}
-                            <div className="flex gap-2">
-                                <button onClick={() => setFamilyGameTab('lobby')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${familyGameTab === 'lobby' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🎮 Lobby</button>
-                                <button onClick={() => setFamilyGameTab('scoreboard')} className={`flex-1 py-2 rounded-xl text-xs font-bold ${familyGameTab === 'scoreboard' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-500'}`}>🏆 Scoreboard</button>
-                            </div>
-
-                            {familyGameTab === 'lobby' && (
-                                <>
-                                    {/* Active Games */}
-                                    {familyActiveGames.length > 0 && (
-                                        <div className="space-y-2">
-                                            <p className="text-[10px] font-black text-slate-400 uppercase">Active Games</p>
-                                            {familyActiveGames.map(game => {
-                                                const currentPlayerId = currentKid ? currentKid.id : role;
-                                                const isMyTurn = game.currentTurn === currentPlayerId;
-                                                const isMyGame = game.createdBy === currentPlayerId || game.opponentId === currentPlayerId;
-                                                if (!isMyGame) return null;
-                                                return (
-                                                    <div key={game.id} className="flex gap-2 items-stretch">
-                                                        <button
-                                                            onClick={() => { setCurrentFamilyGameId(game.id); setView('family_game_play'); }}
-                                                            className={`flex-1 p-3 rounded-xl border text-left transition-all active:scale-98 ${isMyTurn ? 'bg-purple-50 border-purple-200 hover:bg-purple-100' : 'bg-slate-50 border-slate-200 hover:bg-slate-100'}`}
-                                                        >
-                                                            <div className="flex justify-between items-center mb-1">
-                                                                <span className="text-[10px] font-bold text-purple-500 uppercase">{game.type === 'word_scramble' ? '🔤 Word Scramble' : game.type === 'letter_link' ? '🧩 Letter Link' : '⚓ Battleship'}</span>
-                                                                {isMyTurn && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-xl">{game.creatorAvatar}</span>
-                                                                <span className="text-xs font-bold text-slate-400">vs</span>
-                                                                <span className="text-xl">{game.opponentAvatar}</span>
-                                                                <span className="flex-1 text-xs text-slate-600">{game.creatorName} vs {game.opponentName}</span>
-                                                            </div>
-                                                        </button>
-
-                                                        {game.createdBy === currentPlayerId && (
-                                                            <button
-                                                                onClick={async (e) => {
-                                                                    e.stopPropagation();
-                                                                    if (window.confirm('Are you sure you want to cancel this game?')) {
-                                                                        try {
-                                                                            await deleteDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id));
-                                                                        } catch (err) {
-                                                                            console.error("Error deleting game:", err);
-                                                                            alert("Failed to delete game.");
-                                                                        }
-                                                                    }
-                                                                }}
-                                                                className="w-12 bg-red-50 text-red-500 rounded-xl border border-red-100 flex items-center justify-center hover:bg-red-100 transition-colors"
-                                                            >
-                                                                <Trash2 className="w-5 h-5" />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-
-                                    {/* Start New Game */}
-                                    <div className={`rounded-2xl shadow-lg border p-4 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                        <p className="text-sm font-black text-purple-600 uppercase text-center">🆕 Challenge Someone!</p>
-
-                                        {/* Opponent Selection */}
-                                        <div className="space-y-2">
-                                            <p className="text-[9px] font-black text-slate-400 uppercase">Choose Opponent:</p>
-                                            <div className="flex flex-wrap gap-2">
-                                                {getFamilyMembers().map(member => (
-                                                    <button
-                                                        key={member.id}
-                                                        onClick={() => setSelectedOpponent(member)}
-                                                        className={`p-2 rounded-xl border flex flex-col items-center gap-1 min-w-[60px] transition-all ${selectedOpponent?.id === member.id
-                                                            ? 'bg-purple-100 border-purple-400 ring-2 ring-purple-300'
-                                                            : 'bg-slate-50 border-slate-200 hover:bg-purple-50'
-                                                            }`}
-                                                    >
-                                                        <span className="text-2xl">{member.avatar}</span>
-                                                        <span className="text-[10px] font-bold text-slate-600 truncate max-w-[50px]">{member.name}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {getFamilyMembers().length === 0 && (
-                                                <p className="text-xs text-slate-400 text-center py-2">Add family members first!</p>
-                                            )}
-                                        </div>
-
-                                        {/* Game Type Selection */}
-                                        {selectedOpponent && (
-                                            <div className="space-y-2 pt-2 border-t border-slate-100">
-                                                <p className="text-[9px] font-black text-slate-400 uppercase">Select Game vs {selectedOpponent.name}:</p>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'word_scramble')} className="p-3 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
-                                                        <span className="text-xl">🔤</span>
-                                                        <span className="text-[9px] font-bold text-purple-600">Word</span>
-                                                    </button>
-                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'letter_link')} className="p-3 bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
-                                                        <span className="text-xl">🧩</span>
-                                                        <span className="text-[9px] font-bold text-blue-600">Letter Link</span>
-                                                    </button>
-                                                    <button onClick={() => createFamilyGame(selectedOpponent, 'battleship')} className="p-3 bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
-                                                        <span className="text-xl">⚓</span>
-                                                        <span className="text-[9px] font-bold text-cyan-600">Battleship</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {/* Back Button */}
-                                    <button onClick={() => setView(currentKid ? 'kid_hub' : 'parent_hub')} className="w-full py-3 text-xs font-bold text-slate-400">
-                                        ← Back to {currentKid ? 'My Hub' : 'Dashboard'}
-                                    </button>
-                                </>
-                            )}
-
-                            {familyGameTab === 'scoreboard' && (
-                                <div className={`rounded-2xl shadow-lg border p-4 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                    <p className="text-sm font-black text-center text-purple-600">🏆 Family Leaderboard</p>
-                                    {(() => {
-                                        // Calculate wins per family member
-                                        const winCounts = {};
-                                        familyGameHistory.forEach(game => {
-                                            const winnerId = game.winnerId || game.solvedBy;
-                                            const winnerName = game.winnerName || game.solverName;
-                                            if (winnerId) {
-                                                if (!winCounts[winnerId]) winCounts[winnerId] = { name: winnerName, wins: 0 };
-                                                winCounts[winnerId].wins++;
-                                            }
-                                        });
-                                        const sorted = Object.entries(winCounts).sort((a, b) => b[1].wins - a[1].wins);
-
-                                        if (sorted.length === 0) {
-                                            return <p className="text-center text-slate-400 text-xs py-4">No games completed yet. Start playing!</p>;
-                                        }
-
-                                        return (
-                                            <div className="space-y-2">
-                                                {sorted.map(([id, data], i) => (
-                                                    <div key={id} className={`flex items-center gap-3 p-3 rounded-xl ${i === 0 ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
-                                                        <span className="text-xl">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</span>
-                                                        <span className="flex-1 font-bold text-sm text-slate-700">{data.name}</span>
-                                                        <span className="text-lg font-black text-purple-600">{data.wins}</span>
-                                                        <span className="text-[10px] text-slate-400">wins</span>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        );
-                                    })()}
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* FAMILY GAME PLAY VIEW */}
-                    {view === 'family_game_play' && currentFamilyGameId && (() => {
-                        const game = familyActiveGames.find(g => g.id === currentFamilyGameId);
-                        if (!game) return (
-                            <div className="p-4 text-center space-y-4">
-                                <p className="text-slate-500">Game not found</p>
-                                <button onClick={() => setView('family_games')} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold text-sm">Back to Lobby</button>
-                            </div>
-                        );
-
-                        const myId = getCurrentPlayerId();
-                        const opponentId = game.createdBy === myId ? game.opponentId : game.createdBy;
-                        const isMyTurn = game.currentTurn === myId;
-                        const myData = game.players?.[myId] || {};
-                        const opponentData = game.players?.[opponentId] || {};
-                        const phase = game.phase || 'placing';
-
-                        return (
-                            <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
-                                {/* Header - Hidden for Battleship Battle Phase to reduce clutter */}
-                                {!(game.type === 'battleship' && phase === 'battle') && (
-                                    <>
-                                        <div className="text-center">
-                                            <p className="text-[10px] font-black text-purple-500 uppercase">{game.type === 'word_scramble' ? '🔤 Word Scramble' : game.type === 'letter_link' ? '🧩 Letter Link' : '⚓ Battleship'}</p>
-                                            <div className="flex items-center justify-center gap-2 mt-1">
-                                                <span className="text-xl">{game.creatorAvatar}</span>
-                                                <span className="text-xs font-bold text-slate-400">vs</span>
-                                                <span className="text-xl">{game.opponentAvatar}</span>
-                                            </div>
-                                            <p className="text-xs text-slate-600">{game.creatorName} vs {game.opponentName}</p>
-                                        </div>
-
-                                        {/* Turn Indicator */}
-                                        <div className={`p-2 rounded-xl text-center ${isMyTurn ? 'bg-green-100 border-2 border-green-200' : 'bg-slate-100'}`}>
-                                            <p className="text-xs font-bold">{isMyTurn ? <span className="text-green-600">🎯 Your Turn!</span> : <span className="text-slate-500">⏳ Waiting for opponent...</span>}</p>
-                                        </div>
-                                    </>
-                                )}
-
-                                {/* WORD SCRAMBLE GAMEPLAY - Race to 10 points */}
-                                {game.type === 'word_scramble' && (() => {
-                                    const myScore = game.players?.[myId]?.score || 0;
-                                    const oppScore = game.players?.[opponentId]?.score || 0;
-                                    const targetScore = game.targetScore || 10;
-
-                                    return (
-                                        <div className={`rounded-2xl shadow-lg border p-4 space-y-4 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                            {/* Score Display */}
-                                            <div className="grid grid-cols-2 gap-2 text-center">
-                                                <div className="bg-purple-50 p-2 rounded-xl">
-                                                    <p className="text-[9px] font-black text-purple-500 uppercase">You</p>
-                                                    <p className="text-2xl font-black text-purple-600">{myScore}</p>
-                                                </div>
-                                                <div className="bg-slate-50 p-2 rounded-xl">
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase">Opponent</p>
-                                                    <p className="text-2xl font-black text-slate-600">{oppScore}</p>
-                                                </div>
-                                            </div>
-                                            <p className="text-[9px] text-center text-slate-400">First to {targetScore} points wins!</p>
-
-                                            {/* Current Word */}
-                                            {game.hint && <p className="text-xs text-pink-500 text-center">{game.hint}</p>}
-                                            <div className="text-center py-4">
-                                                <p className="text-3xl font-black text-slate-800 tracking-[0.3em]">{game.scrambled}</p>
-                                            </div>
-
-                                            {/* Guess Input - Only active on your turn */}
-                                            {isMyTurn ? (
-                                                <>
-                                                    <input
-                                                        type="text"
-                                                        placeholder="Your guess..."
-                                                        className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-lg font-bold uppercase"
-                                                        onKeyDown={async (e) => {
-                                                            if (e.key === 'Enter') {
-                                                                const guess = e.target.value.trim().toUpperCase();
-                                                                if (guess === game.word) {
-                                                                    try {
-                                                                        const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                        const newScore = myScore + 1;
-
-                                                                        if (newScore >= targetScore) {
-                                                                            // Winner!
-                                                                            const winnerName = currentKid ? currentKid.name : (role === 'his' ? husbandName : wifeName);
-                                                                            await updateDoc(gameRef, { phase: 'completed', winnerId: myId, winnerName });
-                                                                            const historyRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-                                                                            await addDoc(historyRef, { ...game, winnerId: myId, winnerName, completedAt: serverTimestamp() });
-                                                                            await deleteDoc(gameRef);
-                                                                            alert(`🎉 You scored ${targetScore} points! You WIN!`);
-                                                                            setView('family_games');
-                                                                        } else {
-                                                                            // Generate new word and switch turn
-                                                                            const FAMILY_SCRAMBLE_WORDS = [
-                                                                                'FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'FRIENDS', 'AWESOME', 'SUPER', 'WINNER', 'CHAMPION',
-                                                                                'SMILE', 'LAUGH', 'DANCE', 'MUSIC', 'BEACH', 'PIZZA', 'SUNNY', 'CANDY', 'PARTY', 'MOVIE',
-                                                                                'GARDEN', 'PICNIC', 'KINDNESS', 'JOURNEY', 'BRAVE', 'DREAMS', 'COOKIE', 'FOREST', 'NATURE', 'SUMMER',
-                                                                                'WINTER', 'SPRING', 'AUTUMN', 'PUZZLE', 'WONDER', 'BRIGHT', 'ENERGY', 'CHUCKLE', 'GIGGLE', 'GENTLE',
-                                                                                'STREAK', 'ROCKET', 'JUNGLE', 'MONSTER', 'DRAGON', 'WIZARD', 'MAGIC', 'PLANET', 'GALAXY', 'SPARKLE'
-                                                                            ];
-                                                                            const newWord = FAMILY_SCRAMBLE_WORDS[Math.floor(Math.random() * FAMILY_SCRAMBLE_WORDS.length)];
-                                                                            const newScrambled = newWord.split('').sort(() => Math.random() - 0.5).join('');
-                                                                            await updateDoc(gameRef, {
-                                                                                word: newWord,
-                                                                                scrambled: newScrambled,
-                                                                                hint: `${newWord.length} letters`,
-                                                                                [`players.${myId}.score`]: newScore,
-                                                                                currentTurn: opponentId
-                                                                            });
-                                                                            alert(`✅ Correct! +1 point (${newScore}/${targetScore}). Your opponent's turn!`);
-                                                                            e.target.value = '';
-                                                                        }
-                                                                    } catch (err) { console.error(err); alert('Error updating game'); }
-                                                                } else {
-                                                                    // Wrong guess - switch turn
-                                                                    try {
-                                                                        const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                        await updateDoc(gameRef, { currentTurn: opponentId });
-                                                                        alert(`❌ Wrong! The word was ${game.word}. Your opponent's turn now.`);
-                                                                        e.target.value = '';
-                                                                    } catch (err) { console.error(err); }
-                                                                }
-                                                            }
-                                                        }}
-                                                    />
-                                                    <p className="text-[10px] text-slate-400 text-center">Press Enter to submit your guess</p>
-                                                </>
-                                            ) : (
-                                                <div className="text-center py-4 bg-slate-100 rounded-xl">
-                                                    <p className="text-sm text-slate-500">⏳ Waiting for opponent to guess...</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                {/* LETTER LINK GAMEPLAY - Full Board */}
-                                {game.type === 'letter_link' && (() => {
-                                    const board = (() => {
-                                        try {
-                                            const base = JSON.parse(game.board || '[]');
-                                            const full = base.length === 121 ? base : Array(121).fill(null);
-                                            // Overlay placed tiles
-                                            placedTiles.forEach(t => {
-                                                if (t.row >= 0 && t.row < 11 && t.col >= 0 && t.col < 11) {
-                                                    full[t.row * 11 + t.col] = { char: t.char, fromHandIndex: t.fromHandIndex };
-                                                }
-                                            });
-                                            return full;
-                                        } catch (e) { return Array(121).fill(null); }
-                                    })();
-                                    const myHand = myData.hand || [];
-
-                                    return (
-                                        <div className={`rounded-2xl shadow-lg border px-1 py-2 space-y-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                            {/* SCORES & TILES */}
-                                            <div className="w-full flex justify-between items-center px-2 py-2 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
-                                                <div className="text-center">
-                                                    <p className="text-[9px] font-bold text-purple-400 uppercase">{myData.name || 'You'}</p>
-                                                    <p className="text-lg font-black text-purple-600">{myData.score || 0}</p>
-                                                </div>
-                                                <div className="text-center px-3">
-                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">Tiles Left</p>
-                                                    <p className="text-sm font-bold text-slate-600">{game.bag?.length || 0}</p>
-                                                </div>
-                                                <div className="text-center">
-                                                    <p className="text-[9px] font-bold text-slate-400 uppercase">{opponentData.name || 'Opponent'}</p>
-                                                    <p className="text-lg font-black text-slate-600">{opponentData.score || 0}</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Last Move */}
-                                            {game.history?.length > 0 && (
-                                                <div className="w-full px-3 py-2 bg-amber-50 rounded-lg border border-amber-200 text-center">
-                                                    <p className="text-[9px] text-amber-700">
-                                                        <span className="font-bold">{game.history[game.history.length - 1]?.playerName || 'Someone'}</span>
-                                                        {' scored '}
-                                                        <span className="font-black text-amber-900">{game.history[game.history.length - 1]?.points} pts</span>
-                                                        {game.history[game.history.length - 1]?.word && ` with "${game.history[game.history.length - 1]?.word}"`}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* 11x11 BOARD */}
-                                            <div className="grid grid-cols-11 gap-[1px] bg-indigo-900 p-0.5 rounded-lg border border-indigo-950 shadow-inner">
-                                                {board.map((cell, idx) => {
-                                                    const row = Math.floor(idx / 11);
-                                                    const col = idx % 11;
-                                                    const hasLetter = cell && (typeof cell === 'string' || cell.char);
-                                                    const letter = hasLetter ? (typeof cell === 'string' ? cell : cell.char) : null;
-                                                    const isTemporary = hasLetter && typeof cell === 'object' && cell.fromHandIndex !== undefined;
-
-                                                    const bonus = getBonusType(idx);
-                                                    const bonusStyles = {
-                                                        'TW': 'bg-red-500/80 text-red-100',
-                                                        'DW': 'bg-pink-400/70 text-pink-100',
-                                                        'TL': 'bg-blue-500/80 text-blue-100',
-                                                        'DL': 'bg-sky-400/70 text-sky-100',
-                                                        'STAR': 'bg-indigo-600 text-amber-300'
-                                                    };
-                                                    const bonusLabels = { 'TW': '3×W', 'DW': '2×W', 'TL': '3×L', 'DL': '2×L', 'STAR': '★' };
-
-                                                    return (
-                                                        <div
-                                                            key={idx}
-                                                            onClick={() => {
-                                                                if (!isMyTurn) return;
-                                                                // Use the couple's logic for toggle if needed, or stick to simple place
-                                                                if (selectedTileIndex !== null && !hasLetter) {
-                                                                    // Place tile on board
-                                                                    const tile = myHand[selectedTileIndex];
-                                                                    if (tile) {
-                                                                        setPlacedTiles(prev => [...prev, { row, col, char: tile, fromHandIndex: selectedTileIndex }]);
-                                                                        setSelectedTileIndex(null);
-                                                                    }
-                                                                }
-                                                            }}
-                                                            className={`w-[25px] h-[25px] flex items-center justify-center text-[10px] font-black rounded-sm transition-all relative
-                                                                ${hasLetter
-                                                                    ? (isTemporary ? 'bg-amber-200 text-amber-900 shadow-md transform scale-105 z-10 animate-pop' : 'bg-amber-100 text-amber-900 border border-amber-300')
-                                                                    : (bonus ? bonusStyles[bonus] : 'bg-indigo-50/10')}
-                                                                ${!hasLetter && isMyTurn && selectedTileIndex !== null ? 'animate-pulse ring-2 ring-amber-400 cursor-pointer' : ''}
-                                                            `}
-                                                        >
-                                                            {letter ? (
-                                                                <div className="flex flex-col items-center leading-none">
-                                                                    <span className="text-xs font-black">{letter}</span>
-                                                                    <span className="text-[5px] font-bold opacity-60">{LETTER_POINTS[letter] || 0}</span>
-                                                                </div>
-                                                            ) : (bonus ? <span className="text-[7px] font-bold">{bonusLabels[bonus]}</span> : '')}
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            <div className="flex flex-col items-center gap-2 w-full">
-                                                <div className="w-full bg-amber-800 p-2 rounded-xl shadow-lg flex justify-center gap-1.5">
-                                                    {myHand.map((tile, i) => {
-                                                        const isPlaced = placedTiles.some(t => t.fromHandIndex === i);
-                                                        const isSelected = selectedTileIndex === i;
-                                                        return (
-                                                            <button
-                                                                key={i}
-                                                                onClick={() => !isPlaced && isMyTurn && setSelectedTileIndex(isSelected ? null : i)}
-                                                                disabled={isPlaced || !isMyTurn}
-                                                                className={`w-10 h-12 rounded flex flex-col items-center justify-center font-black shadow transition-all
-                                                                    ${isPlaced
-                                                                        ? 'bg-amber-900/50 text-amber-900/50 border-none'
-                                                                        : (isSelected
-                                                                            ? 'bg-amber-300 text-amber-950 border-b-4 border-amber-500 -translate-y-1'
-                                                                            : 'bg-amber-100 text-amber-900 border-b-4 border-amber-300 hover:bg-amber-50')}
-                                                                `}
-                                                            >
-                                                                <span className="text-lg leading-none">{tile}</span>
-                                                                <span className="text-[8px] font-bold opacity-60 leading-none">{LETTER_POINTS[tile] || 0}</span>
-                                                            </button>
-                                                        );
-                                                    })}
-                                                </div>
-                                            </div>
-
-                                            {/* Actions */}
-
-                                            {isMyTurn && (
-                                                <div className="flex flex-col gap-2 mt-4">
-                                                    <div className="flex gap-2 w-full">
-                                                        <button
-                                                            onClick={() => { setPlacedTiles([]); setSelectedTileIndex(null); }}
-                                                            disabled={placedTiles.length === 0}
-                                                            className="flex-1 py-3 bg-red-100 text-red-600 font-bold text-xs rounded-xl disabled:opacity-50"
-                                                        >
-                                                            Recall
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                const shuffled = [...myHand].sort(() => Math.random() - 0.5);
-                                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                await updateDoc(gameRef, { [`players.${myId}.hand`]: shuffled });
-                                                            }}
-                                                            className="flex-1 py-3 bg-blue-100 text-blue-600 font-bold text-xs rounded-xl"
-                                                        >
-                                                            Shuffle
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                const words = getWordsFormed(placedTiles, board);
-                                                                if (words.length === 0) { alert("Please form a connected word!"); return; }
-                                                                let allValid = true;
-                                                                for (const w of words) {
-                                                                    const isValid = await validateWord(w);
-                                                                    if (!isValid) { if (!window.confirm(`"${w}" might not be a valid word. Play anyway?`)) { allValid = false; break; } }
-                                                                }
-                                                                if (!allValid) return;
-
-                                                                const points = placedTiles.length * 5;
-                                                                const newBoard = [...board];
-                                                                placedTiles.forEach(t => { newBoard[t.row * 11 + t.col] = t.char; });
-                                                                const newHand = myHand.filter((_, i) => !placedTiles.some(t => t.fromHandIndex === i));
-                                                                const bag = game.bag || [];
-                                                                while (newHand.length < 7 && bag.length > 0) { newHand.push(bag.shift()); }
-
-                                                                try {
-                                                                    const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                    await updateDoc(gameRef, {
-                                                                        board: JSON.stringify(newBoard),
-                                                                        bag: bag,
-                                                                        [`players.${myId}.hand`]: newHand,
-                                                                        [`players.${myId}.score`]: (myData.score || 0) + points,
-                                                                        currentTurn: opponentId,
-                                                                        history: [...(game.history || []), { playerName: myData.name || 'You', points, word: words.join(', ') }]
-                                                                    });
-                                                                    setPlacedTiles([]);
-                                                                    setSelectedTileIndex(null);
-                                                                } catch (err) { console.error(err); alert('Error submitting'); }
-                                                            }}
-                                                            disabled={placedTiles.length === 0}
-                                                            className="flex-2 w-full py-3 bg-green-500 text-white font-black text-xs rounded-xl disabled:bg-slate-300 disabled:text-slate-500 shadow-lg"
-                                                        >
-                                                            ✓ Submit
-                                                        </button>
-                                                    </div>
-
-                                                    <div className="flex gap-2 w-full">
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (window.confirm("Pass turn?")) {
-                                                                    const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                    await updateDoc(gameRef, { currentTurn: opponentId });
-                                                                }
-                                                            }}
-                                                            disabled={placedTiles.length > 0}
-                                                            className="flex-1 py-2 bg-slate-100 text-slate-500 font-bold text-[10px] rounded-lg disabled:opacity-40"
-                                                        >
-                                                            ⏭ Pass Turn
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (window.confirm("Swap all your tiles for new ones? (This counts as your turn)")) {
-                                                                    const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                    let bag = [...(game.bag || [])];
-                                                                    // Return current hand to bag, shuffle, and draw 7 new ones
-                                                                    const fullBag = [...bag, ...myHand].sort(() => Math.random() - 0.5);
-                                                                    const newHand = fullBag.splice(0, 7);
-                                                                    await updateDoc(gameRef, {
-                                                                        bag: fullBag,
-                                                                        [`players.${myId}.hand`]: newHand,
-                                                                        currentTurn: opponentId,
-                                                                        history: [...(game.history || []), { playerName: myData.name || 'You', points: 0, word: 'SWAP' }]
-                                                                    });
-                                                                }
-                                                            }}
-                                                            disabled={placedTiles.length > 0}
-                                                            className="flex-1 py-2 bg-blue-50 text-blue-600 font-bold text-[10px] rounded-lg disabled:opacity-40"
-                                                        >
-                                                            🔄 Swap Tiles
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                if (window.confirm("End game and declare winner?")) {
-                                                                    const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                    await deleteDoc(gameRef);
-                                                                    setView('family_games');
-                                                                }
-                                                            }}
-                                                            className="flex-1 py-2 bg-orange-100 text-orange-500 font-bold text-[10px] rounded-lg"
-                                                        >
-                                                            🏁 End Game
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {!isMyTurn && (
-                                                <p className="text-center text-xs text-slate-400 py-2">⏳ Waiting for opponent...</p>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                {/* BATTLESHIP GAMEPLAY - Full Grids */}
-                                {game.type === 'battleship' && (() => {
-                                    const phase = game.phase || 'placing';
-                                    const winner = game.winner;
-
-                                    // Parse grids
-                                    let myGrid = [], myAttackGrid = [];
-                                    try { myGrid = JSON.parse(myData.grid || '[]'); } catch (e) { myGrid = Array(100).fill(null); }
-                                    try { myAttackGrid = JSON.parse(myData.attackGrid || '[]'); } catch (e) { myAttackGrid = Array(100).fill(null); }
-                                    if (myGrid.length === 0) myGrid = Array(100).fill(null);
-                                    if (myAttackGrid.length === 0) myAttackGrid = Array(100).fill(null);
-
-                                    return (
-                                        <div className={`rounded-2xl shadow-lg border p-3 space-y-3 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-purple-100'}`}>
-                                            {winner && (
-                                                <div className="text-center">
-                                                    <p className={`text-lg font-black ${winner === myId ? 'text-green-600' : 'text-red-500'}`}>
-                                                        {winner === myId ? '🎉 You Won!' : '💀 You Lost!'}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* PLACING PHASE - RICH UPGRADE */}
-                                            {phase === 'placing' && !myData.ready && (
-                                                <div className="space-y-2">
-                                                    <p className="text-[9px] font-black text-slate-400 uppercase">Select Ship to Place:</p>
-
-                                                    {/* Ship Selector */}
-                                                    <div className="grid grid-cols-5 gap-1">
-                                                        {Object.entries(SHIPS).map(([type, ship]) => (
-                                                            <button
-                                                                key={type}
-                                                                onClick={() => setBattleshipSelectedShip(type)}
-                                                                disabled={!!localShipPlacements[type]} // Reuse localShipPlacements or create new state? 
-                                                                // Strategy: We can reuse the state but must RESET it when entering this view? 
-                                                                // Actually, better to just reuse it since only one game active at once typically.
-                                                                className={`p-2 rounded-xl text-center transition-all ${localShipPlacements[type] ? 'bg-green-100 opacity-50'
-                                                                    : battleshipSelectedShip === type ? 'bg-cyan-500 text-white ring-2 ring-cyan-300'
-                                                                        : 'bg-slate-100 hover:bg-cyan-50'
-                                                                    }`}
-                                                            >
-                                                                <span className="text-xl">{ship.emoji}</span>
-                                                                <p className="text-[8px] font-bold">{ship.size}</p>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-
-                                                    {/* Rotate Button */}
-                                                    <button onClick={() => setBattleshipOrientation(o => o === 'horizontal' ? 'vertical' : 'horizontal')} className="w-full py-2 bg-slate-100 rounded-xl text-xs font-bold text-slate-600">
-                                                        {battleshipOrientation === 'horizontal' ? '↔️ Horizontal' : '↕️ Vertical'}
-                                                    </button>
-
-                                                    {/* The Grid (Using localPlacementGrid logic) */}
-                                                    <div className="flex justify-center bg-cyan-900 p-1 rounded-lg">
-                                                        <div className="grid gap-[2px]" style={{ gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)` }}>
-                                                            {(Object.keys(localShipPlacements).length > 0 ? localPlacementGrid : myGrid).flat().map((cell, idx) => {
-                                                                const row = Math.floor(idx / GRID_SIZE);
-                                                                const col = idx % GRID_SIZE;
-                                                                // If we have local placements (UI state), show those. 
-                                                                // NOTE: MyGrid from DB might be empty initially. We rely on localPlacementGrid for the UI during dragging.
-                                                                const hasShip = cell && cell.ship;
-
-                                                                return (
-                                                                    <button
-                                                                        key={idx}
-                                                                        onClick={() => placeBattleshipShip(row, col)}
-                                                                        className={`w-[28px] h-[28px] rounded-sm text-xs font-bold transition-all ${hasShip ? 'bg-cyan-500 text-white' : 'bg-blue-100 hover:bg-cyan-200'}`}
-                                                                    >
-                                                                        {hasShip ? '🚢' : ''}
-                                                                    </button>
-                                                                );
-                                                            })}
-                                                        </div>
-                                                    </div>
-
-                                                    <p className="text-[9px] text-center text-slate-400">{Object.keys(localShipPlacements).length}/5 ships placed</p>
-
-                                                    {Object.keys(localShipPlacements).length >= 5 && (
-                                                        <button
-                                                            onClick={async () => {
-                                                                const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                // Convert the localPlacementGrid (which contains objects) to just 'ship' strings or simple objects for storage
-                                                                // Actually best to store full object if battleshiplogic uses it, or just simplify.
-                                                                // The couples logic stores `[`players.${role}.grid`]: JSON.stringify(myGrid)` where myGrid comes from localPlacementGrid.
-
-                                                                await updateDoc(gameRef, { [`players.${myId}.grid`]: JSON.stringify(localPlacementGrid), [`players.${myId}.ready`]: true });
-
-                                                                // Check if opponent ready
-                                                                if (opponentData.ready) {
-                                                                    await updateDoc(gameRef, { phase: 'battle', currentTurn: game.createdBy });
-                                                                }
-                                                                // Clear local state
-                                                                setLocalShipPlacements({});
-                                                                setLocalPlacementGrid(createEmptyGrid());
-                                                            }}
-                                                            className="w-full py-2 bg-cyan-600 text-white font-bold text-sm rounded-xl"
-                                                        >
-                                                            ✓ Ready to Battle!
-                                                        </button>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {phase === 'placing' && myData.ready && (
-                                                <div className="text-center py-6">
-                                                    <p className="text-2xl mb-2">⏳</p>
-                                                    <p className="text-sm font-bold text-slate-600">Ships placed!</p>
-                                                    <p className="text-xs text-slate-400">Waiting for opponent...</p>
-                                                </div>
-                                            )}
-
-                                            {/* BATTLE PHASE - Attack Grid & My Fleet */}
-                                            {phase === 'battle' && (
-                                                <div className="space-y-3">
-                                                    {/* FIRE! Status Banner */}
-                                                    {isMyTurn && !showMyShips && (
-                                                        <div className="bg-red-50 text-red-600 py-3 rounded-2xl flex items-center justify-center gap-2 mb-4 animate-pulse border border-red-100 shadow-sm">
-                                                            <Target className="w-5 h-5 animate-spin-slow" />
-                                                            <span className="text-sm font-black tracking-widest uppercase">FIRE!</span>
-                                                        </div>
-                                                    )}
-
-                                                    {/* Fleet/Targeting Cards */}
-                                                    <div className="grid grid-cols-2 gap-3 mb-4">
-                                                        <div className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1 transition-all ${showMyShips ? 'bg-blue-500 border-blue-400 text-white shadow-lg scale-105' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
-                                                            <span className="text-[10px] font-black uppercase tracking-wider">Your Fleet</span>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-2xl font-black">{5 - (myData.shipsSunk || 0)}</span>
-                                                                <span className="text-xl">🚢</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className={`p-3 rounded-2xl border-2 flex flex-col items-center gap-1 transition-all ${!showMyShips ? 'bg-rose-500 border-rose-400 text-white shadow-lg scale-105' : 'bg-rose-50 border-rose-100 text-rose-600'}`}>
-                                                            <span className="text-[10px] font-black uppercase tracking-wider">Targeting</span>
-                                                            <div className="flex items-center gap-2">
-                                                                <span className="text-2xl font-black">{5 - (opponentData.shipsSunk || 0)}</span>
-                                                                <span className="text-xl">🚢</span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* View Toggle */}
-                                                    <div className="flex bg-slate-100 p-1.5 rounded-2xl gap-1 shadow-inner mb-4">
-                                                        <button
-                                                            onClick={() => setShowMyShips(false)}
-                                                            className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${!showMyShips ? 'bg-white text-rose-600 shadow-md' : 'text-slate-400'}`}
-                                                        >
-                                                            <Target className="w-4 h-4" /> Targeting
-                                                        </button>
-                                                        <button
-                                                            onClick={() => setShowMyShips(true)}
-                                                            className={`flex-1 py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-2 ${showMyShips ? 'bg-white text-blue-600 shadow-md' : 'text-slate-400'}`}
-                                                        >
-                                                            <Shield className="w-4 h-4" /> Fleet Defense
-                                                        </button>
-                                                    </div>
-
-                                                    {!showMyShips ? (
-                                                        <div className="space-y-2">
-                                                            <div className="grid grid-cols-10 gap-1.5 bg-blue-50/50 p-2 rounded-2xl border border-blue-100">
-                                                                {myAttackGrid.flat().map((cell, idx) => {
-                                                                    const row = Math.floor(idx / 10);
-                                                                    const col = idx % 10;
-                                                                    const isHit = cell === 'hit';
-                                                                    const isMiss = cell === 'miss';
-                                                                    const isUnknown = !cell;
-                                                                    const isSelected = battleshipSelectedCell && battleshipSelectedCell.row === row && battleshipSelectedCell.col === col;
-
-                                                                    return (
-                                                                        <button
-                                                                            key={idx}
-                                                                            disabled={!isMyTurn || !isUnknown}
-                                                                            onClick={() => {
-                                                                                if (!isMyTurn || !isUnknown) return;
-                                                                                setBattleshipSelectedCell({ row, col });
-                                                                            }}
-                                                                            className={`aspect-square w-full rounded-md transition-all flex items-center justify-center text-xs
-                                                                                ${isHit ? 'bg-rose-500 text-white shadow-inner' : isMiss ? 'bg-slate-300 text-slate-500 shadow-inner' : 'bg-blue-200/50 border border-blue-300/30'}
-                                                                                ${isSelected ? 'ring-4 ring-rose-400 z-10 scale-110 shadow-lg bg-rose-100' : ''}
-                                                                                ${isUnknown && isMyTurn && !isSelected ? 'hover:bg-rose-200 cursor-pointer active:scale-95' : ''}
-                                                                            `}
-                                                                        >
-                                                                            {isHit ? '💥' : isMiss ? '•' : isSelected ? '🎯' : ''}
-                                                                        </button>
-                                                                    );
-                                                                })}
-                                                            </div>
-
-                                                            {/* Your turn banner */}
-                                                            {isMyTurn && (
-                                                                <div className="bg-emerald-50 text-emerald-600 p-3 rounded-2xl flex items-center justify-center gap-2 border border-emerald-100 shadow-sm mt-4">
-                                                                    <Target className="w-4 h-4" />
-                                                                    <span className="text-xs font-black uppercase tracking-tight">Your turn to guess!</span>
-                                                                </div>
-                                                            )}
-
-                                                            <button
-                                                                onClick={async () => {
-                                                                    if (!isMyTurn || !battleshipSelectedCell) return;
-                                                                    const { row, col } = battleshipSelectedCell;
-                                                                    const idx = row * 10 + col;
-
-                                                                    try {
-                                                                        let oppGrid = [];
-                                                                        try { oppGrid = JSON.parse(opponentData.grid || '[]'); } catch (e) { oppGrid = Array(100).fill(null); }
-                                                                        const cellAtPos = oppGrid[row] ? oppGrid[row][col] : null;
-                                                                        const hit = cellAtPos && cellAtPos.ship;
-
-                                                                        const flatAttackGrid = [...myAttackGrid.flat()];
-                                                                        flatAttackGrid[idx] = hit ? 'hit' : 'miss';
-
-                                                                        const newAttackGrid2D = [];
-                                                                        for (let r = 0; r < 10; r++) newAttackGrid2D.push(flatAttackGrid.slice(r * 10, r * 10 + 10));
-
-                                                                        const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                                        const updates = {
-                                                                            [`players.${myId}.attackGrid`]: JSON.stringify(newAttackGrid2D),
-                                                                            currentTurn: opponentId
-                                                                        };
-
-                                                                        if (hit) {
-                                                                            const newShipsRemaining = (opponentData.shipsRemaining || 17) - 1;
-                                                                            updates[`players.${opponentId}.shipsRemaining`] = newShipsRemaining;
-                                                                            if (newShipsRemaining <= 0) {
-                                                                                updates.phase = 'ended';
-                                                                                updates.winner = myId;
-                                                                            }
-                                                                        }
-
-                                                                        await updateDoc(gameRef, updates);
-                                                                        setBattleshipSelectedCell(null);
-                                                                        if (hit) alert('💥 BOOM! Direct hit!');
-                                                                    } catch (err) { console.error(err); }
-                                                                }}
-                                                                disabled={!isMyTurn || !battleshipSelectedCell}
-                                                                className="w-full py-4 mt-4 bg-rose-500 text-white font-black rounded-2xl shadow-lg shadow-rose-200 active:scale-95 transition-all text-sm uppercase tracking-widest disabled:bg-slate-300 disabled:shadow-none"
-                                                            >
-                                                                Fire!
-                                                            </button>
-                                                        </div>
-                                                    ) : (
-                                                        <div className="space-y-2">
-                                                            <p className="text-[10px] text-center text-slate-500">🛡️ Your Ship Placements</p>
-                                                            <div className="grid grid-cols-10 gap-1.5 bg-blue-50/50 p-2 rounded-2xl border border-blue-100">
-                                                                {myGrid.flat().map((cell, idx) => {
-                                                                    const hasShip = cell && cell.ship;
-                                                                    const isHit = opponentData.attackGrid && JSON.parse(opponentData.attackGrid).flat()[idx] === 'hit';
-                                                                    const isMiss = opponentData.attackGrid && JSON.parse(opponentData.attackGrid).flat()[idx] === 'miss';
-
-                                                                    return (
-                                                                        <div
-                                                                            key={idx}
-                                                                            className={`aspect-square w-full rounded-md flex items-center justify-center text-[10px] transition-all
-                                                                                ${isHit ? 'bg-rose-500 shadow-inner' : isMiss ? 'bg-blue-300 shadow-inner' : hasShip ? 'bg-blue-500 shadow-md' : 'bg-blue-100/50 border border-blue-200/30'}
-                                                                            `}
-                                                                        >
-                                                                            {isHit ? '💥' : hasShip ? '🚢' : isMiss ? '💦' : ''}
-                                                                        </div>
-                                                                    );
-                                                                })}
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-
-                                            {/* Game Over - Close Button */}
-                                            {phase === 'ended' && (
-                                                <button
-                                                    onClick={async () => {
-                                                        try {
-                                                            const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
-                                                            const historyRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-                                                            await addDoc(historyRef, { ...game, completedAt: serverTimestamp() });
-                                                            await deleteDoc(gameRef);
-                                                            setView('family_games');
-                                                        } catch (err) { console.error(err); }
-                                                    }}
-                                                    className="w-full py-3 bg-slate-200 text-slate-600 font-bold text-sm rounded-xl"
-                                                >
-                                                    Close Game
-                                                </button>
-                                            )}
-                                        </div>
-                                    );
-                                })()}
-
-                                {/* Wager Display */}
-                                {game.wager && (
-                                    <div className="px-3 py-2 bg-gradient-to-r from-pink-50 to-purple-50 rounded-xl text-center">
-                                        <p className="text-[9px] font-bold text-purple-600 uppercase">💝 Wager</p>
-                                        <p className="text-xs font-bold text-slate-700">{game.wager}</p>
-                                    </div>
-                                )}
-
-                                {/* Back Button */}
-                                <button onClick={() => { setCurrentFamilyGameId(null); setView('family_games'); }} className="w-full py-3 text-xs font-bold text-slate-400">
-                                    ← Back to Family Games
-                                </button>
-                            </div>
-                        );
-                    })()}
-
-                    {/* NEW: Conflict Resolution View */}
-                    {
-                        view === 'resolve' && (
-                            <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
-                                <div className="text-center space-y-2 pt-2">
-                                    <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
-                                        <Anchor className="w-7 h-7 text-orange-600" />
-                                    </div>
-                                    <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
-                                    <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
-                                </div>
-
-                                <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
-                                    {/* Progress */}
-                                    <div className="flex gap-1">
-                                        {CONFLICT_STEPS.map((_, i) => (
-                                            <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
-                                        ))}
-                                    </div>
-
-                                    {/* Current Step */}
-                                    <div className="text-center py-4">
-                                        <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
-                                        <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
-                                    </div>
-
-                                    <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
-                                        <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
-                                    </div>
-
-                                    <button
-                                        onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
-                                        className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
-                                    >
-                                        <Share2 className="w-4 h-4" />
-                                        Share: "{CONFLICT_STEPS[conflictStep].action}"
-                                    </button>
-
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
-                                            disabled={conflictStep === 0}
-                                            className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
-                                        >
-                                            ← Previous
-                                        </button>
-                                        <button
-                                            onClick={() => {
-                                                if (conflictStep < CONFLICT_STEPS.length - 1) {
-                                                    setConflictStep(conflictStep + 1);
-                                                } else {
-                                                    alert('🎉 You completed the conflict resolution process! Great job working through this together.');
-                                                    setConflictStep(0);
-                                                }
-                                            }}
-                                            className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
-                                        >
-                                            {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
-                                        </button>
-                                    </div>
-                                </div>
-
-                                <button
-                                    onClick={() => { setConflictStep(0); setView('hub'); }}
-                                    className="w-full py-3 text-slate-400 text-xs font-bold"
-                                >
-                                    Exit to Hub
-                                </button>
-                            </div>
-                        )
-                    }
+                        ))}
+                    </div>
+                )}
+            </div>
+
+            {/* Quick Actions */}
+            <div className="grid grid-cols-3 gap-3">
+                <button
+                    onClick={() => setView('family_games')}
+                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 relative ${darkMode ? 'bg-purple-900/50 border-purple-700' : 'bg-purple-50 border-purple-200'}`}
+                >
+                    <span className="text-2xl">🎮</span>
+                    <span className={`text-xs font-bold ${darkMode ? 'text-purple-300' : 'text-purple-600'}`}>Family Games</span>
+
+                </button>
+                <button
+                    onClick={() => setShowKidManager(true)}
+                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+                >
+                    <span className="text-2xl">⚙️</span>
+                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Manage Kids</span>
+                </button>
+                <button
+                    onClick={() => {
+                        setPortalMode('couple');
+                        setView('hub');
+                        setAffectionType('primary');
+                    }}
+                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}
+                >
+                    <span className="text-2xl">💑</span>
+                    <span className={`text-xs font-bold ${darkMode ? 'text-slate-300' : 'text-slate-600'}`}>Couple Portal</span>
+                </button>
+                <button
+                    onClick={() => setShowFamilyCalendar(!showFamilyCalendar)}
+                    className={`p-4 rounded-2xl border flex flex-col items-center gap-2 ${darkMode ? 'bg-amber-900/30 border-amber-700' : 'bg-amber-50 border-amber-200'}`}
+                >
+                    <span className="text-2xl">📅</span>
+                    <span className={`text-xs font-bold ${darkMode ? 'text-amber-300' : 'text-amber-600'}`}>{showFamilyCalendar ? 'Hide Cal' : 'Family Cal'}</span>
+                </button>
+            </div>
+
+            {/* Family Calendar View */}
+            {showFamilyCalendar && (
+                <div className="animate-in fade-in slide-in-from-top-4">
+                    <CalendarView
+                        calendarId="ZmFtaWx5MDY4MDk0MTIyMTIxNzk0OTA5NTJAZ3JvdXAuY2FsZW5kYXIuZ29vZ2xlLmNvbQ"
+                        title="Family Calendar"
+                        darkMode={darkMode}
+                    />
+                </div>
+            )}
+
+            {/* Logout */}
+            <button
+                onClick={() => {
+                    setRole(null);
+                    setCurrentKid(null);
+                    localStorage.removeItem('user_role');
+                    localStorage.removeItem('current_kid_id');
+                    localStorage.setItem('unity_bridge_view', 'home');
+                    setView('home');
+                }}
+                className={`w-full py-4 rounded-2xl text-sm font-bold ${darkMode ? 'bg-slate-700 text-slate-300' : 'bg-slate-100 text-slate-600'}`}
+            >
+                👋 Switch User
+            </button>
+        </div>
+    )
+}
+
+{
+    (view === 'family_games' || view === 'family_game_play') && (
+        <FamilyGamesHub
+            role={role}
+            coupleCode={coupleCode}
+            db={db}
+            darkMode={darkMode}
+            husbandName={husbandName}
+            wifeName={wifeName}
+            kidProfiles={kidProfiles}
+            currentKid={currentKid}
+            sendNotification={sendNotification}
+            onBack={() => setView(currentKid ? 'kid_hub' : 'parent_hub')}
+        />
+    )
+}
+
+
+{/* NEW: Conflict Resolution View */ }
+{
+    view === 'resolve' && (
+        <div className="p-4 space-y-4 animate-in slide-in-from-bottom-4">
+            <div className="text-center space-y-2 pt-2">
+                <div className="w-14 h-14 bg-orange-100 rounded-full flex items-center justify-center mx-auto border-2 border-white shadow-lg">
+                    <Anchor className="w-7 h-7 text-orange-600" />
+                </div>
+                <h2 className="text-2xl font-black text-slate-800 tracking-tighter italic">Conflict Resolution</h2>
+                <p className="text-xs text-slate-400">A guided process to work through disagreements together</p>
+            </div>
+
+            <div className="bg-white rounded-[2.5rem] shadow-xl border border-orange-100 p-6 space-y-4">
+                {/* Progress */}
+                <div className="flex gap-1">
+                    {CONFLICT_STEPS.map((_, i) => (
+                        <div key={i} className={`flex-1 h-2 rounded-full ${i <= conflictStep ? 'bg-orange-500' : 'bg-slate-200'}`} />
+                    ))}
+                </div>
+
+                {/* Current Step */}
+                <div className="text-center py-4">
+                    <p className="text-[10px] font-black text-orange-500 uppercase tracking-widest mb-2">Step {conflictStep + 1} of {CONFLICT_STEPS.length}</p>
+                    <h3 className="text-xl font-black text-slate-800">{CONFLICT_STEPS[conflictStep].title}</h3>
+                </div>
+
+                <div className="p-6 bg-orange-50 border border-orange-200 rounded-2xl">
+                    <p className="text-sm text-slate-700 text-center">{CONFLICT_STEPS[conflictStep].prompt}</p>
+                </div>
+
+                <button
+                    onClick={() => saveToBridge(CONFLICT_STEPS[conflictStep].action)}
+                    className="w-full py-4 bg-orange-100 text-orange-700 font-bold rounded-2xl text-sm flex items-center justify-center gap-2 hover:bg-orange-200 transition-all"
+                >
+                    <Share2 className="w-4 h-4" />
+                    Share: "{CONFLICT_STEPS[conflictStep].action}"
+                </button>
+
+                <div className="flex gap-3">
+                    <button
+                        onClick={() => setConflictStep(Math.max(0, conflictStep - 1))}
+                        disabled={conflictStep === 0}
+                        className="flex-1 py-3 bg-slate-100 text-slate-600 font-bold rounded-xl disabled:opacity-50"
+                    >
+                        ← Previous
+                    </button>
+                    <button
+                        onClick={() => {
+                            if (conflictStep < CONFLICT_STEPS.length - 1) {
+                                setConflictStep(conflictStep + 1);
+                            } else {
+                                alert('🎉 You completed the conflict resolution process! Great job working through this together.');
+                                setConflictStep(0);
+                            }
+                        }}
+                        className="flex-1 py-3 bg-orange-600 text-white font-bold rounded-xl"
+                    >
+                        {conflictStep === CONFLICT_STEPS.length - 1 ? 'Complete ✓' : 'Next →'}
+                    </button>
+                </div>
+            </div>
+
+            <button
+                onClick={() => { setConflictStep(0); setView('hub'); }}
+                className="w-full py-3 text-slate-400 text-xs font-bold"
+            >
+                Exit to Hub
+            </button>
+        </div>
+    )
+}
                 </div >
             </main >
 
-            {/* Kid Manager Modal (Parents only) */}
-            {
-                showKidManager && (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                        <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                            <div className="flex justify-between items-center">
-                                <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
-                                <button
-                                    onClick={() => setShowKidManager(false)}
-                                    className="text-slate-400 hover:text-slate-600 text-xl font-bold"
-                                >
-                                    ✕
-                                </button>
-                            </div>
+    {/* Kid Manager Modal (Parents only) */ }
+{
+    showKidManager && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                <div className="flex justify-between items-center">
+                    <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
+                    <button
+                        onClick={() => setShowKidManager(false)}
+                        className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+                    >
+                        ✕
+                    </button>
+                </div>
 
-                            {/* Add New Kid Form */}
-                            <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
-                                <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
-                                <div className="space-y-2">
-                                    <input
-                                        type="text"
-                                        id="kid-name-input"
-                                        placeholder="Kid's Name"
-                                        className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                    />
-                                    <div className="grid grid-cols-6 gap-2">
-                                        {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
-                                            <button
-                                                key={emoji}
-                                                type="button"
-                                                onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
-                                                className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
-                                            >
-                                                {emoji}
-                                            </button>
-                                        ))}
+                {/* Add New Kid Form */}
+                <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
+                    <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
+                    <div className="space-y-2">
+                        <input
+                            type="text"
+                            id="kid-name-input"
+                            placeholder="Kid's Name"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                        />
+                        <div className="grid grid-cols-6 gap-2">
+                            {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
+                                <button
+                                    key={emoji}
+                                    type="button"
+                                    onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
+                                    className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
+                                >
+                                    {emoji}
+                                </button>
+                            ))}
+                        </div>
+                        <input
+                            type="text"
+                            id="kid-avatar-input"
+                            defaultValue="🧒"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
+                            readOnly
+                        />
+                        <input
+                            type="password"
+                            inputMode="numeric"
+                            maxLength={4}
+                            id="kid-pin-input"
+                            placeholder="4-digit PIN"
+                            className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                        />
+                        <button
+                            onClick={() => {
+                                const name = document.getElementById('kid-name-input').value.trim();
+                                const avatar = document.getElementById('kid-avatar-input').value || '🧒';
+                                const pin = document.getElementById('kid-pin-input').value;
+                                if (!name) { alert('Please enter a name'); return; }
+                                if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
+                                addKidProfile(name, avatar, pin);
+                                document.getElementById('kid-name-input').value = '';
+                                document.getElementById('kid-avatar-input').value = '🧒';
+                                document.getElementById('kid-pin-input').value = '';
+                            }}
+                            className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
+                        >
+                            ➕ Add Kid
+                        </button>
+                    </div>
+                </div>
+
+                {/* Existing Kids */}
+                {kidProfiles.length > 0 && (
+                    <div className="space-y-2">
+                        <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
+                        {kidProfiles.map(kid => (
+                            <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                    <div>
+                                        <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
+                                        <p className="text-[10px] text-slate-400">PIN: ••••</p>
                                     </div>
-                                    <input
-                                        type="text"
-                                        id="kid-avatar-input"
-                                        defaultValue="🧒"
-                                        className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
-                                        readOnly
-                                    />
-                                    <input
-                                        type="password"
-                                        inputMode="numeric"
-                                        maxLength={4}
-                                        id="kid-pin-input"
-                                        placeholder="4-digit PIN"
-                                        className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
                                     <button
                                         onClick={() => {
-                                            const name = document.getElementById('kid-name-input').value.trim();
-                                            const avatar = document.getElementById('kid-avatar-input').value || '🧒';
-                                            const pin = document.getElementById('kid-pin-input').value;
-                                            if (!name) { alert('Please enter a name'); return; }
-                                            if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
-                                            addKidProfile(name, avatar, pin);
-                                            document.getElementById('kid-name-input').value = '';
-                                            document.getElementById('kid-avatar-input').value = '🧒';
-                                            document.getElementById('kid-pin-input').value = '';
+                                            setShowKidManager(false);
+                                            setCurrentKid(kid);
+                                            setView('family_games');
+                                            alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
                                         }}
-                                        className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
+                                        className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
                                     >
-                                        ➕ Add Kid
+                                        <Gamepad2 className="w-4 h-4" />
+                                        <span className="text-[10px] font-bold">Play</span>
+                                    </button>
+                                    <button
+                                        onClick={async () => {
+                                            const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
+                                            if (newPin && /^\d{4}$/.test(newPin)) {
+                                                try {
+                                                    await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
+                                                    alert('PIN updated successfully! 🔒');
+                                                } catch (err) {
+                                                    console.error(err);
+                                                    alert('Failed to update PIN.');
+                                                }
+                                            } else if (newPin !== null) {
+                                                alert('Invalid PIN. Must be 4 digits.');
+                                            }
+                                        }}
+                                        className="text-orange-400 hover:text-orange-600 p-2"
+                                        title="Reset PIN"
+                                    >
+                                        <Lock className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                        onClick={() => deleteKidProfile(kid.id, kid.name)}
+                                        className="text-red-400 hover:text-red-600 p-2"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             </div>
-
-                            {/* Existing Kids */}
-                            {kidProfiles.length > 0 && (
-                                <div className="space-y-2">
-                                    <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
-                                    {kidProfiles.map(kid => (
-                                        <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
-                                            <div className="flex items-center gap-3">
-                                                <span className="text-2xl">{kid.avatar || '🧒'}</span>
-                                                <div>
-                                                    <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
-                                                    <p className="text-[10px] text-slate-400">PIN: ••••</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={() => {
-                                                        setShowKidManager(false);
-                                                        setCurrentKid(kid);
-                                                        setView('family_games');
-                                                        alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
-                                                    }}
-                                                    className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
-                                                >
-                                                    <Gamepad2 className="w-4 h-4" />
-                                                    <span className="text-[10px] font-bold">Play</span>
-                                                </button>
-                                                <button
-                                                    onClick={async () => {
-                                                        const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
-                                                        if (newPin && /^\d{4}$/.test(newPin)) {
-                                                            try {
-                                                                await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
-                                                                alert('PIN updated successfully! 🔒');
-                                                            } catch (err) {
-                                                                console.error(err);
-                                                                alert('Failed to update PIN.');
-                                                            }
-                                                        } else if (newPin !== null) {
-                                                            alert('Invalid PIN. Must be 4 digits.');
-                                                        }
-                                                    }}
-                                                    className="text-orange-400 hover:text-orange-600 p-2"
-                                                    title="Reset PIN"
-                                                >
-                                                    <Lock className="w-4 h-4" />
-                                                </button>
-                                                <button
-                                                    onClick={() => deleteKidProfile(kid.id, kid.name)}
-                                                    className="text-red-400 hover:text-red-600 p-2"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                        ))}
                     </div>
-                )
-            }
+                )}
+            </div>
+        </div>
+    )
+}
 
-            {/* Navigation (Fixed) - Hidden for Kids */}
-            {
-                view !== 'home' && portalMode !== 'kid' && (
-                    <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => { setView('hub'); if (activeTab === 'settings' || activeTab === 'reminders') setActiveTab('affection'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
-                        </button>
-                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
-                        </button>
-                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
-                            <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
-                        </button>
-                        <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
-                            <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
-                        </button>
-                        <button onClick={() => { setView('nudge'); if (activeTab !== 'settings' && activeTab !== 'reminders') setActiveTab('reminders'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
-                            <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
-                        </button>
-                    </nav>
-                )
-            }
+{/* Navigation (Fixed) - Hidden for Kids */ }
+{
+    view !== 'home' && portalMode !== 'kid' && (
+        <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+            <button onClick={() => { setView('hub'); if (activeTab === 'settings' || activeTab === 'reminders') setActiveTab('affection'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
+            </button>
+            <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+            </button>
+            <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
+                <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
+            </button>
+            <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
+                <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
+            </button>
+            <button onClick={() => { setView('nudge'); if (activeTab !== 'settings' && activeTab !== 'reminders') setActiveTab('reminders'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
+            </button>
+        </nav>
+    )
+}
         </div >
     );
 };
