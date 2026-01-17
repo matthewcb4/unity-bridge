@@ -19,16 +19,19 @@ import {
 import { getMessaging, getToken, onMessage } from 'firebase/messaging';
 import { LETTER_POINTS, getBonusType, calculateMoveScore, validateWord, getWordsFormed } from './letterLinkLogic';
 import { SHIPS, GRID_SIZE, createEmptyGrid, isValidPlacement, placeShipOnGrid, processAttack, checkAllShipsSunk, countRemainingShips, getAttackDisplay, hasPlacedAllShips } from './battleshipLogic';
+import ShieldCheckComp from './components/ShieldCheckComp';
+import CalendarView from './components/CalendarView';
+import { JOURNAL_TYPES, saveToJournal, deleteFromJournal, updateJournalEntry, exportJournalData } from './features/journaling/journalLogic';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
-    apiKey: "AIzaSyArFtQwJcTQnhYW15n8HMksjomCoeL9dpw",
-    authDomain: "unity-bridge-45617.firebaseapp.com",
-    projectId: "unity-bridge-45617",
-    storageBucket: "unity-bridge-45617.firebasestorage.app",
-    messagingSenderId: "865688064662",
-    appId: "1:865688064662:web:18665109e9f2bbd9f7a8b7",
-    measurementId: "G-GJCWR2TZFN"
+    apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+    authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+    projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+    storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+    messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+    appId: process.env.REACT_APP_FIREBASE_APP_ID,
+    measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID
 };
 
 // API key is now securely stored in Cloud Function - no longer exposed in frontend
@@ -57,14 +60,6 @@ const messaging = typeof window !== 'undefined' ? getMessaging(app) : null;
 
 const APP_ID = 'unity-bridge-live';
 
-// Journal type definitions with visual styling
-const JOURNAL_TYPES = {
-    feeling: { label: 'Feeling', color: 'text-purple-600', bg: 'bg-purple-100', border: 'border-purple-200', icon: Heart },
-    ai_log: { label: 'AI Log', color: 'text-blue-600', bg: 'bg-blue-100', border: 'border-blue-200', icon: Zap },
-    win: { label: 'Win', color: 'text-green-600', bg: 'bg-green-100', border: 'border-green-200', icon: Sparkles },
-    thought: { label: 'Thought', color: 'text-amber-600', bg: 'bg-amber-100', border: 'border-amber-200', icon: PenTool }
-};
-
 // Nudge prompts with time-appropriate content
 const NUDGE_DATA = {
     Morning: {
@@ -89,61 +84,7 @@ const NUDGE_DATA = {
 
 // --- COMPONENT DEFINITIONS ---
 
-// Custom Icon Component (Moved up to avoid hoisting issues)
-const ShieldCheckComp = (props) => (
-    <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></svg>
-);
-
-const CalendarView = ({ calendarId, title, darkMode, mode: initialMode = 'AGENDA' }) => {
-    const [mode, setMode] = useState(initialMode);
-    const bgColor = darkMode ? '0f172a' : 'ffffff';
-    // Google Calendar embed URL with basic customizations
-    // mode can be MONTH, WEEK, or AGENDA
-    const embedUrl = `https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calendarId)}&ctz=America%2FChicago&showTitle=0&showNav=1&showPrint=0&showTabs=0&showCalendars=0&showTz=0&mode=${mode}&wkst=1&bgcolor=%23${bgColor}`;
-
-    return (
-        <div className={`space-y-3 animate-in fade-in slide-in-from-bottom-4`}>
-            <div className="flex items-center justify-between px-2">
-                <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-rose-500" />
-                    <h3 className={`text-[10px] font-black uppercase tracking-widest ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>{title}</h3>
-                </div>
-                <div className="flex items-center gap-2">
-                    <select
-                        value={mode}
-                        onChange={(e) => setMode(e.target.value)}
-                        className={`text-[9px] font-black uppercase border rounded-lg px-2 py-1 outline-none transition-all ${darkMode ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-white border-slate-200 text-slate-600'}`}
-                    >
-                        <option value="MONTH">Month</option>
-                        <option value="WEEK">Week</option>
-                        <option value="AGENDA">Agenda</option>
-                    </select>
-                    <a
-                        href={`https://calendar.google.com/calendar/render?cid=${encodeURIComponent(calendarId)}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={`p-1.5 rounded-lg border transition-all ${darkMode ? 'bg-slate-800 border-slate-700 hover:bg-slate-700' : 'bg-white border-slate-200 hover:bg-slate-50'}`}
-                        title="Open in Google Calendar"
-                    >
-                        <ExternalLink className="w-3 h-3 text-rose-500" />
-                    </a>
-                </div>
-            </div>
-            <div className={`rounded-3xl overflow-hidden border shadow-inner ${darkMode ? 'border-slate-700 bg-slate-900' : 'border-rose-100 bg-rose-50/30'} h-[500px] w-full relative`}>
-                <iframe
-                    src={embedUrl}
-                    style={{ border: 0 }}
-                    width="100%"
-                    height="100%"
-                    frameBorder="0"
-                    scrolling="no"
-                    title={title}
-                    className={darkMode ? 'opacity-80' : ''}
-                ></iframe>
-            </div>
-        </div>
-    );
-};
+// --- APP ---
 
 const App = () => {
     // State
@@ -764,39 +705,26 @@ Return ONLY valid JSON, no other text.`;
         }
     };
 
-    const saveToJournal = async (manualText = null, meta = {}) => {
-        if (!user || !coupleCode) {
-            alert('Please set a couple code on the home screen first');
-            return;
-        }
-        if (!role) {
-            alert('Please select your hub (Husband or Wife) first');
-            return;
-        }
+    const handleSaveToJournal = async (manualText = null, meta = {}) => {
         const content = manualText || editableOutput || inputText;
         if (!content) {
             alert('Please enter some text first');
             return;
         }
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            await addDoc(collection(db, sharedNamespace, 'journals', role, 'entries'), {
-                content, timestamp: serverTimestamp(), ...meta
-            });
+            await saveToJournal({ db, user, coupleCode, role, content, meta });
             setEditableOutput(''); setInputText(''); setJournalPrompt(null);
             alert('Saved to journal! ✓');
         } catch (err) {
             console.error('Journal save error:', err);
-            alert('Failed to save. Please try again.');
+            alert(err.message || 'Failed to save. Please try again.');
         }
     };
 
-    const deleteFromJournal = async (itemId) => {
-        if (!user || !coupleCode || !role) return;
+    const handleDeleteFromJournal = async (itemId) => {
         if (!window.confirm('Are you sure you want to delete this journal entry?')) return;
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            await deleteDoc(doc(db, sharedNamespace, 'journals', role, 'entries', itemId));
+            await deleteFromJournal({ db, coupleCode, role, itemId });
         } catch (err) {
             console.error('Journal delete error:', err);
             alert('Failed to delete. Please try again.');
@@ -835,12 +763,10 @@ Return ONLY valid JSON, no other text.`;
     };
 
     // NEW: Update Journal Entry
-    const updateJournalEntry = async (itemId, newContent) => {
-        if (!user || !coupleCode || !role || !newContent.trim()) return;
+    const handleUpdateJournalEntry = async (itemId, newContent) => {
+        if (!newContent.trim()) return;
         try {
-            const sharedNamespace = `couples/${coupleCode.toLowerCase()}`;
-            await setDoc(doc(db, sharedNamespace, 'journals', role, 'entries', itemId),
-                { content: newContent.trim() }, { merge: true });
+            await updateJournalEntry({ db, coupleCode, role, itemId, newContent: newContent.trim() });
             setEditingJournalId(null);
             setEditingJournalContent('');
         } catch (err) {
@@ -868,24 +794,12 @@ Return ONLY valid JSON, no other text.`;
     };
 
     // NEW: Export Journal Data
-    const exportJournalData = () => {
+    const handleExportJournalData = () => {
         if (journalItems.length === 0) {
             alert('No journal entries to export');
             return;
         }
-        const data = journalItems.map(j => ({
-            date: j.timestamp ? new Date(j.timestamp.seconds * 1000).toISOString() : 'Unknown',
-            type: j.type || 'entry',
-            content: j.content
-        }));
-        const text = data.map(d => `[${d.date}] (${d.type})\n${d.content}\n`).join('\n---\n\n');
-        const blob = new Blob([text], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `unity-bridge-journal-${new Date().toISOString().split('T')[0]}.txt`;
-        a.click();
-        URL.revokeObjectURL(url);
+        exportJournalData(journalItems);
     };
 
     // NEW: Save Anniversary
@@ -2256,7 +2170,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                 <textarea value={editableOutput} onChange={(e) => setEditableOutput(e.target.value)} className={`w-full p-6 bg-transparent text-sm italic font-medium outline-none min-h-[120px] ${darkMode ? 'text-slate-200' : 'text-slate-700'}`} />
                                             </div>
                                             <div className="grid grid-cols-2 gap-3">
-                                                <button onClick={() => saveToJournal()} className={`font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2 border ${darkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>PRIVATE</button>
+                                                <button onClick={() => handleSaveToJournal()} className={`font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2 border ${darkMode ? 'bg-slate-700 text-slate-300 border-slate-600' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>PRIVATE</button>
                                                 <button onClick={() => saveToBridge()} className="bg-green-600 text-white font-bold py-4 rounded-2xl text-[10px] flex items-center justify-center gap-2">SHARE</button>
                                             </div>
                                         </div>
@@ -2420,7 +2334,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                 <span className="text-sm font-black uppercase tracking-wider">Recording {JOURNAL_TYPES[journalPrompt].label}</span>
                                             </div>
                                             <textarea id="studio-input" placeholder={`What ${JOURNAL_TYPES[journalPrompt].label.toLowerCase()} would you like to capture?`} className={`w-full p-5 bg-white border ${JOURNAL_TYPES[journalPrompt].border} rounded-2xl text-xs min-h-[120px] outline-none focus:ring-2 focus:ring-opacity-50`} />
-                                            <button onClick={() => { const val = document.getElementById('studio-input').value; saveToJournal(val, { type: journalPrompt }); }} className={`w-full ${JOURNAL_TYPES[journalPrompt].color.replace('text-', 'bg-').replace('-600', '-600')} text-white py-3 rounded-xl text-[10px] font-black shadow-lg`} style={{ backgroundColor: journalPrompt === 'feeling' ? '#9333ea' : journalPrompt === 'ai_log' ? '#2563eb' : journalPrompt === 'win' ? '#16a34a' : '#d97706' }}>SAVE {JOURNAL_TYPES[journalPrompt].label.toUpperCase()}</button>
+                                            <button onClick={() => { const val = document.getElementById('studio-input').value; handleSaveToJournal(val, { type: journalPrompt }); }} className={`w-full ${JOURNAL_TYPES[journalPrompt].color.replace('text-', 'bg-').replace('-600', '-600')} text-white py-3 rounded-xl text-[10px] font-black shadow-lg`} style={{ backgroundColor: journalPrompt === 'feeling' ? '#9333ea' : journalPrompt === 'ai_log' ? '#2563eb' : journalPrompt === 'win' ? '#16a34a' : '#d97706' }}>SAVE {JOURNAL_TYPES[journalPrompt].label.toUpperCase()}</button>
                                         </div>
                                     )}
                                     <div className="space-y-4 pt-4 border-t border-slate-100">
@@ -2444,7 +2358,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                     Insights
                                                 </button>
                                                 <button
-                                                    onClick={exportJournalData}
+                                                    onClick={handleExportJournalData}
                                                     disabled={journalItems.length === 0}
                                                     className="text-[9px] font-black text-green-600 bg-green-50 px-3 py-1.5 rounded-full uppercase flex items-center gap-1 hover:bg-green-100 transition-all disabled:opacity-50"
                                                 >
@@ -2523,7 +2437,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                                 />
                                                                 <div className="flex gap-2">
                                                                     <button
-                                                                        onClick={() => updateJournalEntry(item.id, editingJournalContent)}
+                                                                        onClick={() => handleUpdateJournalEntry(item.id, editingJournalContent)}
                                                                         className="flex-1 py-2 text-[9px] font-bold text-white bg-green-600 rounded-xl"
                                                                     >
                                                                         Save
@@ -2561,7 +2475,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                                         Share
                                                                     </button>
                                                                     <button
-                                                                        onClick={() => deleteFromJournal(item.id)}
+                                                                        onClick={() => handleDeleteFromJournal(item.id)}
                                                                         className="py-2 px-3 text-[9px] font-bold text-red-500 bg-red-50 rounded-xl flex items-center justify-center gap-1 hover:bg-red-100 transition-all"
                                                                     >
                                                                         <Trash2 className="w-3 h-3" />
