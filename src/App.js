@@ -149,26 +149,22 @@ const App = () => {
     // State
     const [user, setUser] = useState(null);
     const [authError, setAuthError] = useState(null);
-    // Auto-redirect to hub if user previously selected a role and has couple code
-    const savedRole = localStorage.getItem('user_role');
-    const savedCode = localStorage.getItem('couple_code');
-    const savedKidId = localStorage.getItem('current_kid_id');
-    const [view, setViewState] = useState(localStorage.getItem('unity_bridge_view') || (savedRole && savedCode ? 'hub' : (savedKidId && savedCode ? 'kid_hub' : 'home')));
+    // Standard app logic (hold in memory, not persistent across reloads to avoid conflicts)
+    const [view, setViewState] = useState('home');
 
     const setView = (newView) => {
         setViewState(newView);
-        localStorage.setItem('unity_bridge_view', newView);
     };
 
-    const [role, setRole] = useState(savedRole || null);
+    const [role, setRole] = useState(null);
     const [activeTab, setActiveTab] = useState('affection');
     const [affectionType, setAffectionType] = useState('primary');
 
-    const [wifeName, setWifeName] = useState(localStorage.getItem('wife_name') || '');
-    const [husbandName, setHusbandName] = useState(localStorage.getItem('husband_name') || '');
-    const [wifePetName, setWifePetName] = useState(localStorage.getItem('wife_pet_name') || '');
-    const [husbandPetName, setHusbandPetName] = useState(localStorage.getItem('husband_pet_name') || '');
-    const [coupleCode, setCoupleCode] = useState(localStorage.getItem('couple_code') || '');
+    const [wifeName, setWifeName] = useState('');
+    const [husbandName, setHusbandName] = useState('');
+    const [wifePetName, setWifePetName] = useState('');
+    const [husbandPetName, setHusbandPetName] = useState('');
+    const [coupleCode, setCoupleCode] = useState('');
 
     const [bridgeItems, setBridgeItems] = useState([]);
     const [journalItems, setJournalItems] = useState([]);
@@ -380,15 +376,6 @@ const App = () => {
         const unsubKids = onSnapshot(kidsRef, (snap) => {
             const kids = snap.docs.map(d => ({ id: d.id, ...d.data() }));
             setKidProfiles(kids.sort((a, b) => (a.name || '').localeCompare(b.name || '')));
-
-            // Restore current kid if ID is in localStorage (Check directly to avoid stale closure)
-            const activeKidId = localStorage.getItem('current_kid_id');
-            if (activeKidId && !currentKid) {
-                const restoredKid = kids.find(k => k.id === activeKidId);
-                if (restoredKid) {
-                    setCurrentKid(restoredKid);
-                }
-            }
         }, (err) => console.error("Kids Sync Error:", err));
 
         // Listen for family games (Family Games Hub) - Needed for indicator on Dashboard even without role? 
@@ -1895,7 +1882,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     </label>
                     <input
                         value={coupleCode}
-                        onChange={(e) => { setCoupleCode(e.target.value); localStorage.setItem('couple_code', e.target.value); }}
+                        onChange={(e) => { setCoupleCode(e.target.value); }}
                         placeholder="e.g. smith"
                         className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
                     />
@@ -1917,7 +1904,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         <span className="text-2xl">👨</span>
                         <input
                             value={husbandName}
-                            onChange={(e) => { e.stopPropagation(); setHusbandName(e.target.value); localStorage.setItem('husband_name', e.target.value); }}
+                            onChange={(e) => { e.stopPropagation(); setHusbandName(e.target.value); }}
                             placeholder="Dad's Name"
                             className="bg-transparent text-[10px] font-bold text-blue-600 text-center w-full outline-none placeholder:text-blue-300"
                         />
@@ -1930,7 +1917,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         <span className="text-2xl">👩</span>
                         <input
                             value={wifeName}
-                            onChange={(e) => { e.stopPropagation(); setWifeName(e.target.value); localStorage.setItem('wife_name', e.target.value); }}
+                            onChange={(e) => { e.stopPropagation(); setWifeName(e.target.value); }}
                             placeholder="Mom's Name"
                             className="bg-transparent text-[10px] font-bold text-rose-600 text-center w-full outline-none placeholder:text-rose-300"
                         />
@@ -1957,7 +1944,6 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     // we must reset it to trigger the PIN modal for the newly selected profile
                                     if (portalMode === 'kid') {
                                         setPortalMode('couple');
-                                        localStorage.setItem('portal_mode', 'couple');
                                     }
                                 }}
                                 disabled={!coupleCode}
@@ -2001,7 +1987,6 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                     const storedPin = localStorage.getItem(`${pendingParentRole}_pin`) || '0000';
                                     if (val === storedPin) {
                                         setRole(pendingParentRole);
-                                        localStorage.setItem('user_role', pendingParentRole);
                                         setShowParentPinModal(false);
                                         setParentPinInput('');
                                         setPendingParentRole(null);
@@ -2052,8 +2037,6 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 if (val.length === 4) {
                                     if (val === currentKid.pin) {
                                         setPortalMode('kid'); // Still useful state tracking
-                                        localStorage.setItem('portal_mode', 'kid');
-                                        localStorage.setItem('current_kid_id', currentKid.id);
                                         setView('kid_hub');
                                     } else {
                                         alert('Wrong PIN! Try again.');
@@ -4425,7 +4408,6 @@ Generated by Unity Bridge - Relationship OS`;
                                                 setPortalMode('couple');
                                                 localStorage.removeItem('current_kid_id');
                                                 localStorage.removeItem('portal_mode');
-                                                localStorage.setItem('unity_bridge_view', 'home');
                                                 setView('home');
                                             }
                                         }}
@@ -5283,7 +5265,7 @@ Generated by Unity Bridge - Relationship OS`;
                                                         <div className="space-y-2">
                                                             <p className="text-[10px] text-center text-slate-500">{isMyTurn ? '🎯 Tap to attack!' : '⏳ Opponent attacking...'}</p>
                                                             <div className="grid grid-cols-10 gap-[2px] bg-slate-700 p-1 rounded-lg">
-                                                                {myAttackGrid.map((cell, idx) => {
+                                                                {myAttackGrid.flat().map((cell, idx) => {
                                                                     const isHit = cell === 'hit';
                                                                     const isMiss = cell === 'miss';
                                                                     const isUnknown = !cell;
@@ -5298,15 +5280,22 @@ Generated by Unity Bridge - Relationship OS`;
                                                                                     let oppGrid = [];
                                                                                     try { oppGrid = JSON.parse(opponentData.grid || '[]'); } catch (e) { oppGrid = Array(100).fill(null); }
 
-                                                                                    // Check if there's a ship at this index
-                                                                                    const hit = oppGrid.flat().some(cell => cell && cell.ship && (cell.row * 10 + cell.col) === idx);
+                                                                                    // Check if there's a ship at this index (row/col from idx)
+                                                                                    const row = Math.floor(idx / 10);
+                                                                                    const col = idx % 10;
+                                                                                    const cellAtPos = oppGrid[row] ? oppGrid[row][col] : null;
+                                                                                    const hit = cellAtPos && cellAtPos.ship;
 
-                                                                                    const newAttackGrid = [...myAttackGrid];
-                                                                                    newAttackGrid[idx] = hit ? 'hit' : 'miss';
+                                                                                    const flatAttackGrid = [...myAttackGrid.flat()];
+                                                                                    flatAttackGrid[idx] = hit ? 'hit' : 'miss';
+
+                                                                                    // Convert back to 2D for storage consistency
+                                                                                    const newAttackGrid2D = [];
+                                                                                    for (let r = 0; r < 10; r++) newAttackGrid2D.push(flatAttackGrid.slice(r * 10, r * 10 + 10));
 
                                                                                     const gameRef = doc(db, 'families', coupleCode.toLowerCase(), 'family_games', game.id);
                                                                                     const updates = {
-                                                                                        [`players.${myId}.attackGrid`]: JSON.stringify(newAttackGrid),
+                                                                                        [`players.${myId}.attackGrid`]: JSON.stringify(newAttackGrid2D),
                                                                                         currentTurn: opponentId
                                                                                     };
 
