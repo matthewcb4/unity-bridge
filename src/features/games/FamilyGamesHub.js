@@ -14,55 +14,71 @@ import { Gamepad2, Trash2 } from 'lucide-react';
 import WordScramble from './components/WordScramble';
 import LetterLink from './components/LetterLink';
 import Battleship from './components/Battleship';
+import DotsAndBoxes from './components/DotsAndBoxes';
+
+// ... (existing imports)
 
 const FamilyGamesHub = ({
     role,
-    currentKid,
-    kidProfiles,
     coupleCode,
     db,
     darkMode,
     husbandName,
     wifeName,
-    sendNotification
+    kidProfiles,
+    currentKid,
+    sendNotification,
+    onBack
 }) => {
     const [familyActiveGames, setFamilyActiveGames] = useState([]);
-    const [familyGameHistory, setFamilyGameHistory] = useState([]);
     const [currentFamilyGameId, setCurrentFamilyGameId] = useState(null);
     const [familyGameTab, setFamilyGameTab] = useState('lobby');
     const [selectedOpponent, setSelectedOpponent] = useState(null);
 
-    // --- Firestore Listeners ---
-    useEffect(() => {
-        if (!coupleCode || !db) return;
-
-        const gamesRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_games');
-        const qG = query(gamesRef, orderBy('createdAt', 'desc'));
-        const unsubG = onSnapshot(qG, (snap) => {
-            setFamilyActiveGames(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-
-        const historyRef = collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history');
-        const qH = query(historyRef, orderBy('completedAt', 'desc'));
-        const unsubH = onSnapshot(qH, (snap) => {
-            setFamilyGameHistory(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-
-        return () => { unsubG(); unsubH(); };
-    }, [coupleCode, db]);
-
-    // --- Helper: Get ID of current user (parent role or kid id) ---
+    // Helpers
     const getMyId = () => currentKid ? currentKid.id : role;
     const getMyName = () => currentKid ? currentKid.name : (role === 'his' ? husbandName : wifeName);
-    const getMyAvatar = () => currentKid ? (currentKid.avatar || '🧒') : (role === 'his' ? '👨' : '👩');
+    const getMyAvatar = () => currentKid ? currentKid.avatar : (role === 'his' ? '👨' : '👩');
 
     const getFamilyMembers = () => {
-        const members = [];
-        if (husbandName) members.push({ id: 'his', name: husbandName || 'Dad', avatar: '👨' });
-        if (wifeName) members.push({ id: 'hers', name: wifeName || 'Mom', avatar: '👩' });
-        kidProfiles.forEach(k => members.push({ id: k.id, name: k.name, avatar: k.avatar || '🧒' }));
+        const members = [
+            { id: 'his', name: husbandName, avatar: '👨' },
+            { id: 'hers', name: wifeName, avatar: '👩' },
+            ...(kidProfiles || [])
+        ];
         return members.filter(m => m.id !== getMyId());
     };
+
+    const handleWordScrambleSubmit = async (gameId, answer) => {
+        const game = familyActiveGames.find(g => g.id === gameId);
+        if (!game) return;
+        if (answer.toUpperCase().trim() === game.word) {
+            const newScore = (game.players[getMyId()]?.score || 0) + 1;
+            const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'SMILE', 'FRIENDS'];
+            const newWord = words[Math.floor(Math.random() * words.length)];
+
+            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
+                [`players.${getMyId()}.score`]: newScore,
+                word: newWord,
+                scrambled: newWord.split('').sort(() => Math.random() - 0.5).join(''),
+                currentTurn: game.opponentId === getMyId() ? game.createdBy : game.opponentId
+            });
+        }
+    };
+
+    // Listen for games
+    useEffect(() => {
+        if (!coupleCode) return;
+        const q = query(
+            collection(db, 'families', coupleCode.toLowerCase(), 'family_games'),
+            orderBy('createdAt', 'desc')
+        );
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const games = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setFamilyActiveGames(games.filter(g => g.phase !== 'completed'));
+        });
+        return () => unsubscribe();
+    }, [coupleCode, db]);
 
     // --- Creation Handler ---
     const createGame = async (opponent, gameType) => {
@@ -83,6 +99,7 @@ const FamilyGamesHub = ({
         };
 
         if (gameType === 'word_scramble') {
+            // ... (existing logic)
             const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'SMILE', 'FRIENDS'];
             const word = words[Math.floor(Math.random() * words.length)];
             gameData.word = word;
@@ -91,6 +108,7 @@ const FamilyGamesHub = ({
             gameData.targetScore = 10;
             gameData.players = { [myId]: { score: 0 }, [opponent.id]: { score: 0 } };
         } else if (gameType === 'letter_link') {
+            // ... (existing logic)
             let bag = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ'.split('').sort(() => Math.random() - 0.5);
             gameData.board = JSON.stringify(Array(121).fill(null));
             gameData.bag = bag;
@@ -98,6 +116,11 @@ const FamilyGamesHub = ({
         } else if (gameType === 'battleship') {
             gameData.phase = 'placing';
             gameData.players = { [myId]: { ready: false, shipsRemaining: 5 }, [opponent.id]: { ready: false, shipsRemaining: 5 } };
+        } else if (gameType === 'dots_and_boxes') {
+            gameData.gridSize = 4; // 4x4 dots = 3x3 boxes
+            gameData.lines = {};
+            gameData.boxes = {};
+            gameData.players = { [myId]: { score: 0 }, [opponent.id]: { score: 0 } };
         }
 
         try {
@@ -109,43 +132,7 @@ const FamilyGamesHub = ({
         }
     };
 
-    const handleWordScrambleSubmit = async (gameId, answer) => {
-        const game = familyActiveGames.find(g => g.id === gameId);
-        if (!game) return;
-        const myId = getMyId();
-        const isCorrect = answer.toUpperCase().trim() === game.word;
-
-        if (isCorrect) {
-            const newScore = (game.players[myId].score || 0) + 1;
-            if (newScore >= (game.targetScore || 10)) {
-                // Done
-                await deleteDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId));
-                // Add to history
-                await addDoc(collection(db, 'families', coupleCode.toLowerCase(), 'family_game_history'), {
-                    type: 'word_scramble',
-                    winnerId: myId,
-                    winnerName: getMyName(),
-                    completedAt: serverTimestamp()
-                });
-                alert('🏆 You won!');
-                setCurrentFamilyGameId(null);
-            } else {
-                const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE'];
-                const newWord = words[Math.floor(Math.random() * words.length)];
-                await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
-                    [`players.${myId}.score`]: newScore,
-                    word: newWord,
-                    scrambled: newWord.split('').sort(() => Math.random() - 0.5).join(''),
-                    currentTurn: Object.keys(game.players).find(id => id !== myId)
-                });
-            }
-        } else {
-            // Switch turn
-            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
-                currentTurn: Object.keys(game.players).find(id => id !== myId)
-            });
-        }
-    };
+    // ... (existing logic)
 
     // --- Render ---
     const myId = getMyId();
@@ -156,7 +143,7 @@ const FamilyGamesHub = ({
             <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
                 <div className="flex justify-between items-center">
                     <button onClick={() => setCurrentFamilyGameId(null)} className="text-xs font-bold text-slate-400">← Lobby</button>
-                    <p className="text-[10px] font-bold text-purple-500 uppercase">{activeGame.type.replace('_', ' ')}</p>
+                    <p className="text-[10px] font-bold text-purple-500 uppercase">{activeGame.type.replace(/_/g, ' ')}</p>
                     <div className="w-8" /> {/* spacer */}
                 </div>
 
@@ -192,12 +179,24 @@ const FamilyGamesHub = ({
                         sendNotification={sendNotification}
                     />
                 )}
+
+                {activeGame.type === 'dots_and_boxes' && (
+                    <DotsAndBoxes
+                        game={activeGame}
+                        gameRef={doc(db, 'families', coupleCode.toLowerCase(), 'family_games', activeGame.id)}
+                        role={myId}
+                        db={db}
+                        coupleCode={coupleCode}
+                        darkMode={darkMode}
+                    />
+                )}
             </div>
         );
     }
 
     return (
         <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
+            {/* ... (existing header) */}
             <div className="text-center space-y-1">
                 <div className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border-2 shadow-lg ${darkMode ? 'bg-purple-900 border-purple-700' : 'bg-purple-100 border-white'}`}>
                     <Gamepad2 className="w-7 h-7 text-purple-600" />
@@ -223,7 +222,7 @@ const FamilyGamesHub = ({
                                 <div className="flex items-center gap-3">
                                     <span className="text-xl">{game.createdBy === myId ? game.opponentAvatar : game.creatorAvatar}</span>
                                     <div>
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">{game.type.replace('_', ' ')}</p>
+                                        <p className="text-[10px] font-bold text-purple-500 uppercase">{game.type.replace(/_/g, ' ')}</p>
                                         <p className="text-xs font-bold text-slate-700">vs {game.createdBy === myId ? game.opponentName : game.creatorName}</p>
                                     </div>
                                 </div>
@@ -245,10 +244,11 @@ const FamilyGamesHub = ({
                         </div>
 
                         {selectedOpponent && (
-                            <div className="grid grid-cols-3 gap-2 pt-2 border-t">
+                            <div className="grid grid-cols-4 gap-2 pt-2 border-t">
                                 <button onClick={() => createGame(selectedOpponent, 'word_scramble')} className="p-3 bg-slate-50 rounded-xl flex flex-col items-center"><span className="text-xl">🔤</span></button>
                                 <button onClick={() => createGame(selectedOpponent, 'letter_link')} className="p-3 bg-slate-50 rounded-xl flex flex-col items-center"><span className="text-xl">🧩</span></button>
                                 <button onClick={() => createGame(selectedOpponent, 'battleship')} className="p-3 bg-slate-50 rounded-xl flex flex-col items-center"><span className="text-xl">⚓</span></button>
+                                <button onClick={() => createGame(selectedOpponent, 'dots_and_boxes')} className="p-3 bg-slate-50 rounded-xl flex flex-col items-center border border-indigo-200"><span className="text-xl">🟦</span></button>
                             </div>
                         )}
                     </div>

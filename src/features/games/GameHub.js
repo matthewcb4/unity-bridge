@@ -14,6 +14,7 @@ import { Gamepad2, Trash2 } from 'lucide-react';
 import WordScramble from './components/WordScramble';
 import LetterLink from './components/LetterLink';
 import Battleship from './components/Battleship';
+import UnlockTheNight from './components/UnlockTheNight';
 
 const GameHub = ({
     role,
@@ -144,6 +145,28 @@ const GameHub = ({
         }
     };
 
+    const createUnlockTheNight = async () => {
+        if (!coupleCode || !db || !role) return;
+        try {
+            const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
+            const docRef = await addDoc(gamesRef, {
+                type: 'unlock_the_night',
+                createdBy: role,
+                keeperRole: role, // The creator is the Keeper
+                creatorName: role === 'his' ? husbandName : wifeName,
+                createdAt: serverTimestamp(),
+                reward: '', // To be set by Keeper
+                totalLocks: 3,
+                unlockedCount: 0,
+                turn: 'setup',
+                currentTurn: role
+            });
+            setCurrentGameId(docRef.id);
+        } catch (err) {
+            console.error('Create Unlock error:', err);
+        }
+    };
+
     const deleteActiveGame = async (gameId) => {
         if (!window.confirm('Delete this game?')) return;
         try {
@@ -257,6 +280,16 @@ const GameHub = ({
                         />
                     )}
 
+                    {activeGame.type === 'unlock_the_night' && (
+                        <UnlockTheNight
+                            game={activeGame}
+                            gameRef={doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', activeGame.id)}
+                            role={role}
+                            husbandName={husbandName}
+                            wifeName={wifeName}
+                        />
+                    )}
+
                     {activeGame.wager && (
                         <div className="px-2 py-1 bg-gradient-to-r from-pink-50 to-purple-50 rounded-lg text-center mt-2">
                             <p className="text-[9px] font-bold text-purple-600 uppercase">💝 Wager</p>
@@ -278,7 +311,7 @@ const GameHub = ({
                                         }`}
                                 >
                                     <div>
-                                        <p className="text-[10px] font-bold text-purple-500 uppercase">{game.type.replace('_', ' ')}</p>
+                                        <p className="text-[10px] font-bold text-purple-500 uppercase">{game.type.replace(/_/g, ' ')}</p>
                                         <p className="text-xs font-bold text-slate-700">vs {game.createdBy === role ? 'Partner' : (game.creatorName || 'Partner')}</p>
                                     </div>
                                     {game.currentTurn === role && (
@@ -304,7 +337,7 @@ const GameHub = ({
                             />
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 gap-2">
                             <button onClick={createWordPuzzle} className="p-3 bg-gradient-to-br from-pink-50 to-purple-50 border border-pink-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
                                 <span className="text-xl">🔤</span>
                                 <span className="text-[9px] font-bold text-pink-600 uppercase">Scramble</span>
@@ -316,6 +349,10 @@ const GameHub = ({
                             <button onClick={createBattleshipGame} className="p-3 bg-gradient-to-br from-cyan-50 to-blue-50 border border-cyan-100 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
                                 <span className="text-xl">⚓</span>
                                 <span className="text-[9px] font-bold text-cyan-600 uppercase">Battle</span>
+                            </button>
+                            <button onClick={createUnlockTheNight} className="p-3 bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl flex flex-col items-center gap-1 hover:scale-105 transition-all">
+                                <span className="text-xl">🗝️</span>
+                                <span className="text-[9px] font-bold text-purple-700 uppercase">Unlock</span>
                             </button>
                         </div>
                     </div>

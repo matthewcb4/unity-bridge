@@ -21,13 +21,16 @@ const KidPortal = ({
     setActiveTab,
     inputText,
     setInputText,
-    setDarkMode
+    setDarkMode,
+    husbandName,
+    wifeName
 }) => {
     // Internal State
     const [kidJournalItems, setKidJournalItems] = useState({ mood: null });
     const [kidBridgeMessages, setKidBridgeMessages] = useState([]);
     const [kidJournalEntries, setKidJournalEntries] = useState([]);
     const [journalPrivacy, setJournalPrivacy] = useState(true);
+    const [parentReplyText, setParentReplyText] = useState(''); // For parent replies
 
     // Kid Bridge Listener & Journal Listener
     useEffect(() => {
@@ -371,19 +374,76 @@ const KidPortal = ({
                         </div>
                     </div>
 
-                    <div className="space-y-3 max-h-[300px] overflow-y-auto p-2 bg-slate-50/50 rounded-xl border border-slate-100/50 flex flex-col-reverse">
+                    {/* Parent Reply Section - Only for parents */}
+                    {(role === 'his' || role === 'hers') && (
+                        <div className="space-y-2 pt-2 border-t border-purple-200">
+                            <p className="text-[10px] font-bold text-purple-500 uppercase">Reply to {currentKid.name}</p>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={parentReplyText}
+                                    onChange={(e) => setParentReplyText(e.target.value)}
+                                    placeholder={`Reply as ${role === 'his' ? (husbandName || 'Dad') : (wifeName || 'Mom')}...`}
+                                    className={`flex-1 px-3 py-2 rounded-xl border text-sm outline-none ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-slate-50 border-slate-200'}`}
+                                    onKeyDown={async (e) => {
+                                        if (e.key === 'Enter' && parentReplyText.trim()) {
+                                            try {
+                                                const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
+                                                await addDoc(bridgeRef, {
+                                                    content: parentReplyText.trim(),
+                                                    from: role === 'his' ? (husbandName || 'Dad') : (wifeName || 'Mom'),
+                                                    authorId: role,
+                                                    authorRole: role,
+                                                    timestamp: serverTimestamp(),
+                                                    isParentReply: true
+                                                });
+                                                setParentReplyText('');
+                                            } catch (err) {
+                                                console.error('Parent reply error:', err);
+                                            }
+                                        }
+                                    }}
+                                />
+                                <button
+                                    onClick={async () => {
+                                        if (!parentReplyText.trim()) return;
+                                        try {
+                                            const bridgeRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'bridge_items');
+                                            await addDoc(bridgeRef, {
+                                                content: parentReplyText.trim(),
+                                                from: role === 'his' ? (husbandName || 'Dad') : (wifeName || 'Mom'),
+                                                authorId: role,
+                                                authorRole: role,
+                                                timestamp: serverTimestamp(),
+                                                isParentReply: true
+                                            });
+                                            setParentReplyText('');
+                                        } catch (err) {
+                                            console.error('Parent reply error:', err);
+                                        }
+                                    }}
+                                    className="px-4 py-2 bg-green-500 text-white font-bold rounded-xl text-sm"
+                                >
+                                    Send
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    <div className={`space-y-3 max-h-[300px] overflow-y-auto p-2 rounded-xl border flex flex-col-reverse ${darkMode ? 'bg-slate-700/50 border-slate-600' : 'bg-slate-50/50 border-slate-100/50'}`}>
                         {kidBridgeMessages.length === 0 ? (
                             <p className="text-xs text-center text-slate-400 py-4 italic">No messages yet. Say hi! 👋</p>
                         ) : (
                             kidBridgeMessages.map(msg => {
-                                const isFromKid = msg.authorId === currentKid.id || msg.from === currentKid.name;
+                                const isFromKid = msg.authorId === currentKid.id || (msg.from === currentKid.name && !msg.isParentReply);
+                                const isParent = msg.isParentReply || msg.authorRole === 'his' || msg.authorRole === 'hers';
                                 return (
                                     <div key={msg.id} className={`flex ${isFromKid ? 'justify-end' : 'justify-start'}`}>
                                         <div className={`max-w-[80%] p-3 rounded-2xl text-xs font-bold ${isFromKid
                                             ? (darkMode ? 'bg-purple-600 text-white rounded-tr-none' : 'bg-purple-100 text-purple-900 rounded-tr-none')
-                                            : (darkMode ? 'bg-slate-700 text-slate-200 rounded-tl-none' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-none')
+                                            : (darkMode ? 'bg-green-900/50 text-green-200 rounded-tl-none' : 'bg-green-50 border border-green-200 text-green-800 rounded-tl-none')
                                             }`}>
-                                            {!isFromKid && <p className="text-[9px] font-black opacity-50 mb-1 uppercase">{msg.from}</p>}
+                                            {!isFromKid && <p className={`text-[9px] font-black mb-1 uppercase ${darkMode ? 'text-green-400' : 'text-green-600'}`}>💚 {msg.from}</p>}
                                             {msg.content}
                                         </div>
                                     </div>
