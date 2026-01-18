@@ -11,6 +11,7 @@ import {
     hasPlacedAllShips,
     getAttackDisplay
 } from '../../../battleshipLogic';
+import BattleshipGrid from './BattleshipGrid';
 
 /**
  * Battleship Game Component
@@ -156,36 +157,7 @@ const Battleship = ({
     };
 
     // --- UI Helpers ---
-    const renderGrid = (grid, onClick, showShips = true, isAttackGrid = false) => (
-        <div className="grid grid-cols-10 gap-0.5 bg-blue-500 p-1 rounded-xl shadow-inner border-4 border-blue-600 relative overflow-hidden">
-            {/* Water Effect Overlay */}
-            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10 pointer-events-none"></div>
-
-            {grid.map((r, rowIdx) => r.map((cell, colIdx) => {
-                const display = getAttackDisplay(cell);
-                const isShip = cell && cell.ship && showShips;
-                // Attack Grid: Show hits (💥) and misses (🌊/⚪)
-                // Defense Grid: Show my ships (🚢) + Enemy hits on me (💥) + Enemy misses (🌊)
-
-                return (
-                    <div
-                        key={`${rowIdx}-${colIdx}`}
-                        onClick={() => onClick && onClick(rowIdx, colIdx)}
-                        className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-sm rounded-[2px] cursor-pointer transition-all duration-300 relative
-                            ${isShip && !display ? 'bg-slate-600 border border-slate-500' : 'bg-blue-400/80 border border-blue-300/50'}
-                            ${display === '⚪' || display === 'miss' ? 'bg-blue-300/50' : ''}
-                            ${display === '💥' || (cell && cell.hit) ? 'bg-red-900/80 animate-pulse' : ''}
-                            hover:bg-blue-300 hover:scale-105 hover:z-10
-                        `}
-                    >
-                        {display === '💥' || (cell && cell.hit) ? '💥' :
-                            display === '⚪' || display === 'miss' ? '🌊' :
-                                (isShip ? SHIPS[cell.ship].emoji : '')}
-                    </div>
-                );
-            }))}
-        </div>
-    );
+    // Grid rendering moved to BattleshipGrid component
 
     if (phase === 'placing') {
         if (myData.ready) {
@@ -197,7 +169,7 @@ const Battleship = ({
                     <p className="font-black text-slate-700 text-lg">Fleet Deployed!</p>
                     <p className="text-xs text-slate-500 font-bold uppercase tracking-widest">Waiting for {opponentData.name || 'opponent'}...</p>
                     <div className="opacity-75 scale-95 origin-top">
-                        {renderGrid(localPlacementGrid, null)}
+                        <BattleshipGrid grid={localPlacementGrid} showShips={true} isInteractive={false} />
                     </div>
                 </div>
             );
@@ -211,7 +183,7 @@ const Battleship = ({
                     <p className="text-[10px] text-slate-400">Select a ship and tap the grid</p>
                 </div>
 
-                {renderGrid(localPlacementGrid, handlePlacementClick)}
+                <BattleshipGrid grid={localPlacementGrid} onClick={handlePlacementClick} showShips={true} isInteractive={true} />
 
                 <div className="flex flex-wrap gap-2 justify-center p-2 bg-slate-50 rounded-2xl border border-slate-100">
                     {Object.entries(SHIPS).map(([type, ship]) => {
@@ -300,7 +272,7 @@ const Battleship = ({
                                 <p className="text-xs font-black text-red-500 uppercase tracking-widest">Enemy Waters</p>
                                 <p className="text-[9px] text-slate-400">Tap a blue square to fire torpedo</p>
                             </div>
-                            {renderGrid(myAttackGrid, handleAttack, false, true)}
+                            <BattleshipGrid grid={myAttackGrid} onClick={handleAttack} showShips={false} isInteractive={isMyTurn} />
                         </div>
                     ) : (
                         <div className="space-y-2 animate-in slide-in-from-right-4 duration-300">
@@ -308,7 +280,7 @@ const Battleship = ({
                                 <p className="text-xs font-black text-blue-500 uppercase tracking-widest">My Fleet Status</p>
                                 <p className="text-[9px] text-slate-400">Review damage report</p>
                             </div>
-                            {renderGrid(myGrid, null, true, false)}
+                            <BattleshipGrid grid={myGrid} showShips={true} isInteractive={false} />
                         </div>
                     )}
                 </div>
