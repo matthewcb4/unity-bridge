@@ -7,7 +7,8 @@ import {
     addDoc,
     deleteDoc,
     doc,
-    serverTimestamp
+    serverTimestamp,
+    updateDoc
 } from 'firebase/firestore';
 import { Gamepad2, Trash2 } from 'lucide-react';
 import WordScramble from './components/WordScramble';
