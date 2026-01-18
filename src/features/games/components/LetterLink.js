@@ -26,6 +26,7 @@ const LetterLink = ({
     const [placedTiles, setPlacedTiles] = useState([]);
     const [selectedTileIndex, setSelectedTileIndex] = useState(null);
     const [selectedTileChar, setSelectedTileChar] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const isFamilyGame = !!game.creatorAvatar; // Simple check for family game structure
     const myId = role;
@@ -90,79 +91,88 @@ const LetterLink = ({
     };
 
     const submitMove = async () => {
-        if (!isMyTurn || placedTiles.length === 0) return;
+        if (!isMyTurn || placedTiles.length === 0 || isSubmitting) return;
 
-        const board = JSON.parse(game.board || '[]');
+        setIsSubmitting(true);
+        try {
 
-        // 1. Validate connectivity and line (simplified for now as per logic.js)
-        const words = getWordsFormed(placedTiles, board);
-        if (words.length === 0) {
-            alert("Your move must connect to existing tiles!");
-            return;
-        }
+            const board = JSON.parse(game.board || '[]');
 
-        // 2. Validate words via Dictionary API
-        for (const word of words) {
-            const isValid = await validateWord(word);
-            if (!isValid) {
-                alert(`"${word}" is not a valid word!`);
+            // 1. Validate connectivity and line (simplified for now as per logic.js)
+            const words = getWordsFormed(placedTiles, board);
+            if (words.length === 0) {
+                alert("Your move must connect to existing tiles!");
                 return;
             }
+
+            // 2. Validate words via Dictionary API
+            for (const word of words) {
+                const isValid = await validateWord(word);
+                if (!isValid) {
+                    alert(`"${word}" is not a valid word!`);
+                    return;
+                }
+            }
+
+            // 3. Calculate score
+            const points = calculateMoveScore(placedTiles, board);
+
+            // 4. Update Board
+            const newBoard = [...board];
+            placedTiles.forEach(t => {
+                newBoard[t.row * 11 + t.col] = { char: t.char, player: myId };
+            });
+
+            // 5. Replenish Hand
+            let bag = [...(game.bag || [])];
+            const newHand = [...myHand];
+            // Remove indices in descending order to avoid shift issues
+            const sortedIndices = placedTiles.map(t => t.fromHandIndex).sort((a, b) => b - a);
+            sortedIndices.forEach(idx => newHand.splice(idx, 1));
+
+            const tilesNeeded = 7 - newHand.length;
+            const drawn = bag.splice(0, tilesNeeded);
+            const updatedHand = [...newHand, ...drawn];
+
+            // 6. Update Players & Logic
+            const updatedPlayers = { ...game.players };
+            updatedPlayers[myId] = {
+                ...myData,
+                hand: updatedHand,
+                score: (myData.score || 0) + points
+            };
+
+            const opponentId = Object.keys(game.players).find(id => id !== myId);
+
+            // 7. Update History
+            const history = [...(game.history || [])];
+            history.push({
+                player: myId,
+                points,
+                word: words.join(', '),
+                timestamp: Date.now()
+            });
+
+            await updateDoc(gameRef, {
+                board: JSON.stringify(newBoard),
+                bag,
+                players: updatedPlayers,
+                currentTurn: opponentId,
+                history,
+                lastMoveAt: serverTimestamp()
+            });
+
+            if (sendNotification) {
+                sendNotification("It's your turn!", `${game.creatorName || (myId === 'his' ? husbandName : wifeName)} scored ${points} points with ${words[0]}!`, 'games');
+            }
+
+            recallAllTiles();
+        } catch (err) {
+            console.error('Move submission failed:', err);
+            alert('Failed to submit move. Please try again.');
+        } finally {
+            setIsSubmitting(false);
         }
-
-        // 3. Calculate score
-        const points = calculateMoveScore(placedTiles, board);
-
-        // 4. Update Board
-        const newBoard = [...board];
-        placedTiles.forEach(t => {
-            newBoard[t.row * 11 + t.col] = { char: t.char, player: myId };
-        });
-
-        // 5. Replenish Hand
-        let bag = [...(game.bag || [])];
-        const newHand = [...myHand];
-        // Remove indices in descending order to avoid shift issues
-        const sortedIndices = placedTiles.map(t => t.fromHandIndex).sort((a, b) => b - a);
-        sortedIndices.forEach(idx => newHand.splice(idx, 1));
-
-        const tilesNeeded = 7 - newHand.length;
-        const drawn = bag.splice(0, tilesNeeded);
-        const updatedHand = [...newHand, ...drawn];
-
-        // 6. Update Players & Logic
-        const updatedPlayers = { ...game.players };
-        updatedPlayers[myId] = {
-            ...myData,
-            hand: updatedHand,
-            score: (myData.score || 0) + points
-        };
-
-        const opponentId = Object.keys(game.players).find(id => id !== myId);
-
-        // 7. Update History
-        const history = [...(game.history || [])];
-        history.push({
-            player: myId,
-            points,
-            word: words.join(', '),
-            timestamp: Date.now()
-        });
-
-        await updateDoc(gameRef, {
-            board: JSON.stringify(newBoard),
-            bag,
-            players: updatedPlayers,
-            currentTurn: opponentId,
-            history,
-            lastMoveAt: serverTimestamp()
-        });
-
-        if (sendNotification) {
-            sendNotification("It's your turn!", `${game.creatorName || (myId === 'his' ? husbandName : wifeName)} scored ${points} points with ${words[0]}!`, 'games');
-        }
-
-        recallAllTiles();
     };
 
     const passTurn = async () => {
@@ -294,10 +304,10 @@ const LetterLink = ({
                     </button>
                     <button
                         onClick={submitMove}
-                        disabled={!isMyTurn || placedTiles.length === 0}
+                        disabled={!isMyTurn || placedTiles.length === 0 || isSubmitting}
                         className="flex-2 w-full py-2.5 bg-green-500 text-white font-black text-[10px] rounded-xl disabled:bg-slate-300 disabled:text-slate-500 shadow-lg"
                     >
-                        {isMyTurn ? '✓ Submit' : 'Waiting...'}
+                        {isSubmitting ? '⏳ Validating...' : (isMyTurn ? '✓ Submit' : 'Waiting...')}
                     </button>
                 </div>
 
