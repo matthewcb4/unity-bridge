@@ -12,6 +12,7 @@ import {
     getAttackDisplay
 } from '../../../battleshipLogic';
 import BattleshipGrid from './BattleshipGrid';
+import { useToast } from '../../../components/Toast/ToastContext';
 
 /**
  * Battleship Game Component
@@ -27,6 +28,7 @@ const Battleship = ({
     wifeName = 'Her',
     sendNotification
 }) => {
+    const toast = useToast();
     // Local state for placement phase
     const [localPlacementGrid, setLocalPlacementGrid] = useState(createEmptyGrid());
     const [selectedShip, setSelectedShip] = useState(null);

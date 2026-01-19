@@ -16,6 +16,7 @@ import WordScramble from './components/WordScramble';
 import LetterLink from './components/LetterLink';
 import Battleship from './components/Battleship';
 import UnlockTheNight from './components/UnlockTheNight';
+import { useToast } from '../../components/Toast/ToastContext';
 
 const GameHub = ({
     role,
@@ -27,6 +28,7 @@ const GameHub = ({
     sendNotification,
     sendPushNotification
 }) => {
+    const toast = useToast();
     const [activeGames, setActiveGames] = useState([]);
     const [currentGameId, setCurrentGameId] = useState(null);
     const [wager, setWager] = useState('');
@@ -84,7 +86,7 @@ const GameHub = ({
             setCurrentGameId(docRef.id);
         } catch (err) {
             console.error('Create game error:', err);
-            alert('Could not create game.');
+            toast.error('Could not create game.');
         }
     };
 
@@ -197,7 +199,7 @@ const GameHub = ({
             if (currentScore >= (game.targetScore || 10)) {
                 // Win
                 await deleteActiveGame(gameId);
-                alert(`🏆 Victory! You won with ${currentScore} points!`);
+                toast.success(`🏆 Victory! You won with ${currentScore} points!`);
             } else {
                 // Next word
                 const words = ['LOVE', 'KISS', 'HUG', 'HOME', 'TRUST', 'FOREVER'];
@@ -214,7 +216,7 @@ const GameHub = ({
             await updateDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId), {
                 currentTurn: role === 'his' ? 'hers' : 'his'
             });
-            alert('❌ Wrong guess! Turn switches.');
+            toast.warning('❌ Wrong guess! Turn switches.');
         }
     };
 

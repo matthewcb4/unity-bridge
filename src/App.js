@@ -24,6 +24,7 @@ import GameHub from './features/games/GameHub';
 import FamilyGamesHub from './features/games/FamilyGamesHub';
 import { JOURNAL_TYPES, saveToJournal, deleteFromJournal, updateJournalEntry, exportJournalData } from './features/journaling/journalLogic';
 import { requestNotificationPermission, sendPushNotification } from './features/notifications/notificationLogic';
+import { useToast } from './components/Toast/ToastContext';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
@@ -200,6 +201,9 @@ const App = () => {
     const [talkIntention, setTalkIntention] = useState('compliment'); // compliment, concern, question, update
     const [showFamilyCalendar, setShowFamilyCalendar] = useState(false);
     const [gamesMode, setGamesMode] = useState('couple'); // 'couple' | 'family' - toggle in Games view
+
+    // Toast notifications
+    const toast = useToast();
 
     // Helper: Get current player ID (kid ID or parent role)
     const getCurrentPlayerId = () => currentKid ? currentKid.id : role;
@@ -504,7 +508,7 @@ Return JSON: { "translation": "..." }`;
         const filteredItems = filterMessages(bridgeItems);
 
         if (filteredItems.length === 0) {
-            alert(`No messages found for "${timeFilterLabels[analysisTimeFilter]}". Try a different time period.`);
+            toast.info(`No messages found for "${timeFilterLabels[analysisTimeFilter]}". Try a different time period.`);
             setIsGenerating(false);
             return;
         }
@@ -541,7 +545,7 @@ Return ONLY valid JSON, no other text.`;
         if (result) {
             setPulse(result);
         } else {
-            alert("Failed to generate relationship analysis. Please try again in a moment.");
+            toast.error("Failed to generate relationship analysis. Please try again in a moment.");
         }
         setIsGenerating(false);
     };
@@ -558,11 +562,11 @@ Return ONLY valid JSON, no other text.`;
 
     const saveToBridge = async (customContent = null) => {
         if (!user || !coupleCode) {
-            alert('Please set a couple code on the home screen first');
+            toast.error('Please set a couple code on the home screen first');
             return;
         }
         if (!role) {
-            alert('Please select your hub (Husband or Wife) first');
+            toast.error('Please select your hub (Husband or Wife) first');
             return;
         }
         const content = typeof (customContent || editableOutput) === 'string'
@@ -575,10 +579,10 @@ Return ONLY valid JSON, no other text.`;
                 content, author: role, fromRole: role, timestamp: serverTimestamp(), type: customContent ? 'reset' : 'shared'
             });
             setEditableOutput(''); setInputText('');
-            alert('Shared to bridge! ✓');
+            toast.success('Shared to bridge! ✓');
         } catch (err) {
             console.error('Save error:', err);
-            alert('Failed to save. Please try again.');
+            toast.error('Failed to save. Please try again.');
         }
     };
 
@@ -602,7 +606,7 @@ Return ONLY valid JSON, no other text.`;
             setExpandedThreads(prev => new Set([...prev, parentId]));
         } catch (err) {
             console.error('Reply error:', err);
-            alert('Failed to send reply. Please try again.');
+            toast.error('Failed to send reply. Please try again.');
         }
     };
 
@@ -641,10 +645,10 @@ Return ONLY valid JSON, no other text.`;
                 pin,
                 createdAt: serverTimestamp()
             });
-            alert(`${name} has been added!`);
+            toast.success(`${name} has been added!`);
         } catch (err) {
             console.error('Add kid error:', err);
-            alert('Failed to add kid profile.');
+            toast.error('Failed to add kid profile.');
         }
     };
 
@@ -655,7 +659,7 @@ Return ONLY valid JSON, no other text.`;
             await setDoc(kidRef, updates, { merge: true });
         } catch (err) {
             console.error('Update kid error:', err);
-            alert('Failed to update kid profile.');
+            toast.error('Failed to update kid profile.');
         }
     };
 
@@ -665,26 +669,26 @@ Return ONLY valid JSON, no other text.`;
         try {
             const kidRef = doc(db, 'families', coupleCode.toLowerCase(), 'kids', kidId);
             await deleteDoc(kidRef);
-            alert(`${kidName}'s profile has been removed.`);
+            toast.success(`${kidName}'s profile has been removed.`);
         } catch (err) {
             console.error('Delete kid error:', err);
-            alert('Failed to delete kid profile.');
+            toast.error('Failed to delete kid profile.');
         }
     };
 
     const handleSaveToJournal = async (manualText = null, meta = {}) => {
         const content = manualText || editableOutput || inputText;
         if (!content) {
-            alert('Please enter some text first');
+            toast.warning('Please enter some text first');
             return;
         }
         try {
             await saveToJournal({ db, user, coupleCode, role, content, meta });
             setEditableOutput(''); setInputText(''); setJournalPrompt(null);
-            alert('Saved to journal! ✓');
+            toast.success('Saved to journal! ✓');
         } catch (err) {
             console.error('Journal save error:', err);
-            alert(err.message || 'Failed to save. Please try again.');
+            toast.error(err.message || 'Failed to save. Please try again.');
         }
     };
 
@@ -694,13 +698,13 @@ Return ONLY valid JSON, no other text.`;
             await deleteFromJournal({ db, coupleCode, role, itemId });
         } catch (err) {
             console.error('Journal delete error:', err);
-            alert('Failed to delete. Please try again.');
+            toast.error('Failed to delete. Please try again.');
         }
     };
 
     const generateJournalInsights = async () => {
         if (journalItems.length === 0) {
-            alert('Add some journal entries first to get insights');
+            toast.info('Add some journal entries first to get insights');
             return;
         }
         setIsGenerating(true);
@@ -709,9 +713,9 @@ Return ONLY valid JSON, no other text.`;
         const systemPrompt = `You are a relationship counselor. Based on these recent journal entries:\n${recentEntries}\n\nProvide personalized communication suggestions for talking with ${partnerName}. Return JSON: { "insights": "brief analysis of patterns", "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"] }`;
         const result = await callGemini(systemPrompt);
         if (result) {
-            alert(`💡 Insights: ${result.insights}\n\n✨ Suggestions:\n• ${result.suggestions.join('\n• ')}`);
+            toast.success(`💡 Insights: ${result.insights}`);
         } else {
-            alert('Could not generate insights. Please try again.');
+            toast.error('Could not generate insights. Please try again.');
         }
         setIsGenerating(false);
     };
@@ -725,7 +729,7 @@ Return ONLY valid JSON, no other text.`;
             await deleteDoc(doc(db, sharedNamespace, 'bridge_items', itemId));
         } catch (err) {
             console.error('Bridge delete error:', err);
-            alert('Failed to delete. Please try again.');
+            toast.error('Failed to delete. Please try again.');
         }
     };
 
@@ -738,7 +742,7 @@ Return ONLY valid JSON, no other text.`;
             setEditingJournalContent('');
         } catch (err) {
             console.error('Journal update error:', err);
-            alert('Failed to update. Please try again.');
+            toast.error('Failed to update. Please try again.');
         }
     };
 
@@ -749,7 +753,7 @@ Return ONLY valid JSON, no other text.`;
             j.timestamp?.seconds && (j.timestamp.seconds * 1000) > oneWeekAgo
         );
         if (weekEntries.length === 0) {
-            alert('No journal entries from this week to analyze');
+            toast.info('No journal entries from this week to analyze');
             return;
         }
         setIsGenerating(true);
@@ -763,7 +767,7 @@ Return ONLY valid JSON, no other text.`;
     // NEW: Export Journal Data
     const handleExportJournalData = () => {
         if (journalItems.length === 0) {
-            alert('No journal entries to export');
+            toast.info('No journal entries to export');
             return;
         }
         exportJournalData(journalItems);
@@ -833,7 +837,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         if (result && result.dates) {
             setDateIdeas(result.dates);
         } else {
-            alert('Could not generate date ideas. Please try again.');
+            toast.error('Could not generate date ideas. Please try again.');
         }
         setIsGenerating(false);
     };
@@ -851,7 +855,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
     // Notification helpers
     const requestNotificationPermission = async () => {
         if (typeof Notification === 'undefined') {
-            alert('Notifications are not supported on this browser.');
+            toast.warning('Notifications are not supported on this browser.');
             return;
         }
         try {
@@ -867,22 +871,22 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                     // Ignore initial test error if it happens, permission is what matters
                 }
             } else {
-                alert('Notifications were denied. Please enable them in your browser settings.');
+                toast.warning('Notifications were denied. Please enable them in your browser settings.');
             }
         } catch (err) {
             console.error('Notification permission error:', err);
-            alert('Error requesting permission: ' + err.message);
+            toast.error('Error requesting permission: ' + err.message);
         }
     };
 
     const sendNotification = async (title, body, type = 'general') => {
         if (typeof Notification === 'undefined') {
-            if (type === 'general') alert('Notifications not supported: ' + title + '\n' + body);
+            if (type === 'general') toast.warning('Notifications not supported: ' + title);
             return;
         }
 
         if (notificationPermission !== 'granted') {
-            if (type === 'general') alert('Please enable notifications first to see this test!');
+            if (type === 'general') toast.info('Please enable notifications first to see this test!');
             return;
         }
 
@@ -907,7 +911,7 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
         } catch (err) {
             console.error('Notification error:', err);
             if (type === 'general') {
-                alert('Notification failed (browser restriction?):\n' + title + '\n' + body + '\n\nTry adding to Home Screen if on mobile.');
+                toast.error('Notification failed. Try adding to Home Screen if on mobile.');
             }
         }
     };

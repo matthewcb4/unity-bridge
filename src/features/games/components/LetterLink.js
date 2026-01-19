@@ -7,6 +7,7 @@ import {
     validateWord,
     getWordsFormed
 } from '../../../letterLinkLogic';
+import { useToast } from '../../../components/Toast/ToastContext';
 
 /**
  * LetterLink Game Component
@@ -22,6 +23,7 @@ const LetterLink = ({
     wifeName = 'Her',
     sendNotification
 }) => {
+    const toast = useToast();
     // Internal state for the current turn's unsaved moves
     const [placedTiles, setPlacedTiles] = useState([]);
     const [selectedTileIndex, setSelectedTileIndex] = useState(null);
@@ -101,7 +103,7 @@ const LetterLink = ({
             // 1. Validate connectivity and line (simplified for now as per logic.js)
             const words = getWordsFormed(placedTiles, board);
             if (words.length === 0) {
-                alert("Your move must connect to existing tiles!");
+                toast.warning("Your move must connect to existing tiles!");
                 return;
             }
 
@@ -109,7 +111,7 @@ const LetterLink = ({
             for (const word of words) {
                 const isValid = await validateWord(word);
                 if (!isValid) {
-                    alert(`"${word}" is not a valid word!`);
+                    toast.error(`"${word}" is not a valid word!`);
                     return;
                 }
             }
@@ -169,7 +171,7 @@ const LetterLink = ({
             recallAllTiles();
         } catch (err) {
             console.error('Move submission failed:', err);
-            alert('Failed to submit move. Please try again.');
+            toast.error('Failed to submit move. Please try again.');
         } finally {
             setIsSubmitting(false);
         }

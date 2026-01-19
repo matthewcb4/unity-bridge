@@ -7,6 +7,7 @@ import {
     collection, addDoc, doc, updateDoc, serverTimestamp,
     query, onSnapshot, orderBy, limit
 } from 'firebase/firestore';
+import { useToast } from '../../components/Toast/ToastContext';
 
 const KidPortal = ({
     currentKid,
@@ -25,6 +26,7 @@ const KidPortal = ({
     husbandName,
     wifeName
 }) => {
+    const toast = useToast();
     // Internal State
     const [kidJournalItems, setKidJournalItems] = useState({ mood: null });
     const [kidBridgeMessages, setKidBridgeMessages] = useState([]);
@@ -176,7 +178,7 @@ const KidPortal = ({
 
                     <button
                         onClick={async () => {
-                            if (!inputText.trim()) { alert('Write something first!'); return; }
+                            if (!inputText.trim()) { toast.warning('Write something first!'); return; }
                             try {
                                 const journalRef = collection(db, 'families', coupleCode.toLowerCase(), 'kids', currentKid.id, 'journal');
                                 await addDoc(journalRef, {
@@ -187,10 +189,10 @@ const KidPortal = ({
                                 });
                                 setInputText('');
                                 setKidJournalItems({ mood: null });
-                                alert('Journal saved! 📔');
+                                toast.success('Journal saved! 📔');
                             } catch (err) {
                                 console.error('Kid journal save error:', err);
-                                alert('Oops! Try again.');
+                                toast.error('Oops! Try again.');
                             }
                         }}
                         className="w-full py-4 bg-purple-600 text-white font-bold rounded-2xl text-sm"
@@ -280,10 +282,10 @@ const KidPortal = ({
                                                                         timestamp: serverTimestamp(),
                                                                         readByParent: false
                                                                     });
-                                                                    alert('Shared to Parents! 📤');
+                                                                    toast.success('Shared to Parents! 📤');
                                                                 } catch (err) {
                                                                     console.error(err);
-                                                                    alert('Failed to share.');
+                                                                    toast.error('Failed to share.');
                                                                 }
                                                             }
                                                         }}
@@ -328,7 +330,7 @@ const KidPortal = ({
                                             timestamp: serverTimestamp(),
                                             readByParent: false
                                         });
-                                        alert('Message sent to Mom & Dad! 💕');
+                                        toast.success('Message sent to Mom & Dad! 💕');
                                     } catch (err) {
                                         console.error('Kid bridge error:', err);
                                     }
