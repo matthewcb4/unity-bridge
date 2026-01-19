@@ -93,34 +93,61 @@ const Battleship = ({
     const handleAttack = async (row, col) => {
         if (phase !== 'battle' || !isMyTurn) return;
 
-        try {
-            const opponentGrid = JSON.parse(opponentData.grid);
-            const myAttackGrid = JSON.parse(myData.attackGrid || '[]');
-
-            if (myAttackGrid[row][col] !== null) {
-                alert('Already attacked this cell!');
-                return;
+        // Parse opponent grid with validation
+        const opponentGrid = (() => {
+            try {
+                const parsed = JSON.parse(opponentData.grid || '[]');
+                if (!Array.isArray(parsed) || parsed.length !== 10) {
+                    console.error('Invalid opponent grid, expected 10x10:', parsed?.length);
+                    return createEmptyGrid();
+                }
+                return parsed;
+            } catch (e) {
+                console.error('Failed to parse opponent grid:', e);
+                return createEmptyGrid();
             }
+        })();
 
-            const { result, shipType, newGrid } = processAttack(opponentGrid, row, col);
-            myAttackGrid[row][col] = (result === 'hit' || result === 'sunk') ? { hit: true } : 'miss';
+        // Parse my attack grid with validation
+        const myAttackGrid = (() => {
+            try {
+                const parsed = JSON.parse(myData.attackGrid || '[]');
+                if (!Array.isArray(parsed) || parsed.length !== 10) {
+                    console.log('Invalid attack grid, initializing empty:', parsed?.length);
+                    return createEmptyGrid();
+                }
+                return parsed;
+            } catch (e) {
+                console.error('Failed to parse attack grid:', e);
+                return createEmptyGrid();
+            }
+        })();
 
-            const updatedPlayers = { ...game.players };
-            updatedPlayers[opponentId].grid = JSON.stringify(newGrid);
-            updatedPlayers[myId].attackGrid = JSON.stringify(myAttackGrid);
+        if (myAttackGrid[row][col] !== null) {
+            alert('Already attacked this cell!');
+            return;
+        }
 
-            const opponentAllSunk = checkAllShipsSunk(newGrid);
-            updatedPlayers[opponentId].shipsRemaining = countRemainingShips(newGrid);
+        const { result, shipType, newGrid } = processAttack(opponentGrid, row, col);
+        myAttackGrid[row][col] = (result === 'hit' || result === 'sunk') ? { hit: true } : 'miss';
 
-            let alertMsg = result === 'miss' ? '💨 Miss!' : result === 'sunk' ? `💥 You sunk their ${SHIPS[shipType].name}!` : '💥 Hit!';
+        const opponentAllSunk = checkAllShipsSunk(newGrid);
 
+        let alertMsg = result === 'miss' ? '💨 Miss!' : result === 'sunk' ? `💥 You sunk their ${SHIPS[shipType].name}!` : '💥 Hit!';
+
+        const updates = {
+            [`players.${opponentId}.grid`]: JSON.stringify(newGrid),
+            [`players.${myId}.attackGrid`]: JSON.stringify(myAttackGrid),
+            [`players.${opponentId}.shipsRemaining`]: countRemainingShips(newGrid)
+        };
+
+        try {
             if (opponentAllSunk) {
-                await updateDoc(gameRef, {
-                    players: updatedPlayers,
-                    phase: 'ended',
-                    winner: myId,
-                    currentTurn: null
-                });
+                updates.phase = 'ended';
+                updates.winner = myId;
+                updates.currentTurn = null;
+
+                await updateDoc(gameRef, updates);
 
                 // Add to history
                 const historyRef = collection(db, isFamilyGame ? 'families' : 'couples', coupleCode.toLowerCase(), isFamilyGame ? 'family_game_history' : 'games/history/items');
@@ -136,10 +163,8 @@ const Battleship = ({
 
                 alert('🎉 You won! All enemy ships destroyed!');
             } else {
-                await updateDoc(gameRef, {
-                    players: updatedPlayers,
-                    currentTurn: opponentId
-                });
+                updates.currentTurn = opponentId;
+                await updateDoc(gameRef, updates);
                 alert(alertMsg);
             }
 
@@ -224,8 +249,37 @@ const Battleship = ({
     }
 
     if (phase === 'battle') {
-        const myAttackGrid = JSON.parse(myData.attackGrid || '[]'); // My shots at them
-        const myGrid = JSON.parse(myData.grid || '[]'); // My ships & their shots at me
+        // Safely parse grids with validation
+        const myAttackGrid = (() => {
+            try {
+                const parsed = JSON.parse(myData.attackGrid || '[]');
+                if (!Array.isArray(parsed) || parsed.length !== 10) {
+                    console.log('Battle view: Invalid attack grid, using empty');
+                    return createEmptyGrid();
+                }
+                return parsed;
+            } catch (e) {
+                console.error('Battle view: Failed to parse attack grid:', e);
+                return createEmptyGrid();
+            }
+        })();
+
+        const myGrid = (() => {
+            try {
+                const parsed = JSON.parse(myData.grid || '[]');
+                if (!Array.isArray(parsed) || parsed.length !== 10) {
+                    console.log('Battle view: Invalid my grid, using empty');
+                    return createEmptyGrid();
+                }
+                // Debug: Log hit count on my grid
+                const hitCount = parsed.flat().filter(c => c && c.hit).length;
+                console.log('My Fleet hit count:', hitCount);
+                return parsed;
+            } catch (e) {
+                console.error('Battle view: Failed to parse my grid:', e);
+                return createEmptyGrid();
+            }
+        })();
 
         return (
             <div className="space-y-4 animate-in fade-in">

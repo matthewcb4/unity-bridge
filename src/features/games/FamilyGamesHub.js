@@ -42,8 +42,8 @@ const FamilyGamesHub = ({
 
     const getFamilyMembers = () => {
         const members = [
-            { id: 'his', name: husbandName, avatar: '👨' },
-            { id: 'hers', name: wifeName, avatar: '👩' },
+            { id: 'his', name: husbandName || 'Dad', avatar: '👨' },
+            { id: 'hers', name: wifeName || 'Mom', avatar: '👩' },
             ...(kidProfiles || [])
         ];
         return members.filter(m => m.id !== getMyId());
@@ -109,7 +109,12 @@ const FamilyGamesHub = ({
             gameData.players = { [myId]: { score: 0 }, [opponent.id]: { score: 0 } };
         } else if (gameType === 'letter_link') {
             // ... (existing logic)
-            let bag = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ'.split('').sort(() => Math.random() - 0.5);
+            let bag = 'EEEEEEEEEEEEAAAAAAAAAIIIIIIIIOOOOOOOONNNNNNRRRRRRTTTTTTLLLLSSSSUUUUDDDDGGGBBCCMMPPFFHHVVWWYYKJXQZ'.split('');
+            // Fisher-Yates Shuffle
+            for (let i = bag.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [bag[i], bag[j]] = [bag[j], bag[i]];
+            }
             gameData.board = JSON.stringify(Array(121).fill(null));
             gameData.bag = bag;
             gameData.players = { [myId]: { hand: bag.splice(0, 7), score: 0 }, [opponent.id]: { hand: bag.splice(0, 7), score: 0 } };
@@ -131,8 +136,16 @@ const FamilyGamesHub = ({
             console.error('Create game error:', err);
         }
     };
-
-    // ... (existing logic)
+    // --- Delete Handler ---
+    const deleteGame = async (gameId, e) => {
+        e.stopPropagation(); // Prevent opening the game
+        if (!window.confirm('Are you sure you want to delete this game?')) return;
+        try {
+            await deleteDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId));
+        } catch (err) {
+            console.error('Error deleting game:', err);
+        }
+    };
 
     // --- Render ---
     const myId = getMyId();
@@ -225,6 +238,15 @@ const FamilyGamesHub = ({
                                         <p className="text-[10px] font-bold text-purple-500 uppercase">{game.type.replace(/_/g, ' ')}</p>
                                         <p className="text-xs font-bold text-slate-700">vs {game.createdBy === myId ? game.opponentName : game.creatorName}</p>
                                     </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    {game.currentTurn === myId && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
+                                    <button
+                                        onClick={(e) => deleteGame(game.id, e)}
+                                        className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                                 {game.currentTurn === myId && <span className="text-[9px] font-black bg-green-100 text-green-600 px-2 py-0.5 rounded-full">YOUR TURN</span>}
                             </button>

@@ -21,11 +21,13 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
     console.log('[firebase-messaging-sw.js] Received background message ', payload);
+
     // Customize notification here
     const notificationTitle = payload.notification.title;
     const notificationOptions = {
         body: payload.notification.body,
-        icon: '/favicon.ico'
+        icon: '/logo192.png', // Ensure this matches an actual file in public
+        badge: '/logo192.png'
     };
 
     self.registration.showNotification(notificationTitle,

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, Unlock, Key, Gift, Send, Shield, Heart } from 'lucide-react';
 import { updateDoc, serverTimestamp } from 'firebase/firestore';
 
-const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
+const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName, sendPushNotification }) => {
     // Game state is passed in via 'game' prop from GameHub
     // game.reward, game.totalLocks, game.unlockedCount, game.keeperRole ('his'/'hers')
     // game.currentChallenge, game.turn ('seeker_wait', 'keeper_action', 'seeker_action')
@@ -17,6 +17,7 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
 
     const partnerName = role === 'his' ? wifeName : husbandName;
     const myName = role === 'his' ? husbandName : wifeName;
+    const partnerRole = role === 'his' ? 'hers' : 'his';
 
     // Actions
     const handleSetReward = async () => {
@@ -28,6 +29,10 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
             phase: 'locked',
             turn: 'seeker_action' // Seeker starts by asking for a key
         });
+        // Notify Seeker
+        if (game[`${partnerRole}FcmToken`] && sendPushNotification) {
+            sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge 🔒', `${myName} has locked a reward for tonight!`);
+        }
     };
 
     const handleRequestKey = async () => {
@@ -35,6 +40,10 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
             turn: 'keeper_action', // Keeper needs to set a challenge
             lastAction: `requested a key`
         });
+        // Notify Keeper
+        if (game[`${partnerRole}FcmToken`] && sendPushNotification) {
+            sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge 🗝️', `${myName} is requesting a key!`);
+        }
     };
 
     const handleSendChallenge = async () => {
@@ -45,6 +54,10 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
             challengeStatus: 'pending'
         });
         setChallengeInput('');
+        // Notify Seeker
+        if (game[`${partnerRole}FcmToken`] && sendPushNotification) {
+            sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge 🔥', `New Challenge: ${challengeInput}`);
+        }
     };
 
     const handleMarkChallengeDone = async () => {
@@ -52,17 +65,30 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
             challengeStatus: 'completed',
             turn: 'keeper_action' // Keeper needs to verify and unlock
         });
+        // Notify Keeper
+        if (game[`${partnerRole}FcmToken`] && sendPushNotification) {
+            sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge ✅', `${myName} completed the challenge! Verify it.`);
+        }
     };
 
     const handleUnlockKey = async () => {
         const newCount = (game.unlockedCount || 0) + 1;
+        const revealed = newCount >= 3;
         await updateDoc(gameRef, {
             unlockedCount: newCount,
             currentChallenge: null,
             challengeStatus: null,
             turn: 'seeker_action', // Back to seeker to ask for next key
-            phase: newCount >= 3 ? 'revealed' : 'locked'
+            phase: revealed ? 'revealed' : 'locked'
         });
+        // Notify Seeker
+        if (game[`${partnerRole}FcmToken`] && sendPushNotification) {
+            if (revealed) {
+                sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge 🎁', `REWARD UNLOCKED: ${game.reward}`);
+            } else {
+                sendPushNotification(game[`${partnerRole}FcmToken`], 'Unity Bridge 🔓', `Key #${newCount} Unlocked! ${3 - newCount} to go.`);
+            }
+        }
     };
 
     // --- RENDER ---
@@ -163,9 +189,10 @@ const UnlockTheNight = ({ game, gameRef, role, husbandName, wifeName }) => {
                         )}
 
                         {game.turn === 'keeper_action' && !game.currentChallenge && (
-                            <div className="animate-pulse flex flex-col items-center gap-2">
+                            <div className="animate-pulse flex flex-col items-center gap-2 p-4 bg-slate-50 rounded-xl">
                                 <Shield size={32} className="text-slate-300" />
-                                <p className="text-slate-500 font-medium">Waiting for the Keeper to set a challenge...</p>
+                                <p className="text-slate-600 font-bold">Waiting for Partner...</p>
+                                <p className="text-xs text-slate-400 italic">They need to send you a challenge for the key.</p>
                             </div>
                         )}
 

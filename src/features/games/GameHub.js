@@ -8,7 +8,8 @@ import {
     deleteDoc,
     doc,
     serverTimestamp,
-    updateDoc
+    updateDoc,
+    getDoc
 } from 'firebase/firestore';
 import { Gamepad2, Trash2 } from 'lucide-react';
 import WordScramble from './components/WordScramble';
@@ -23,7 +24,8 @@ const GameHub = ({
     darkMode,
     husbandName,
     wifeName,
-    sendNotification
+    sendNotification,
+    sendPushNotification
 }) => {
     const [activeGames, setActiveGames] = useState([]);
     const [currentGameId, setCurrentGameId] = useState(null);
@@ -148,6 +150,11 @@ const GameHub = ({
     const createUnlockTheNight = async () => {
         if (!coupleCode || !db || !role) return;
         try {
+            // Fetch couple data to get tokens
+            const coupleRef = doc(db, 'couples', coupleCode.toLowerCase());
+            const coupleSnap = await getDoc(coupleRef);
+            const coupleData = coupleSnap.exists() ? coupleSnap.data() : {};
+
             const gamesRef = collection(db, 'couples', coupleCode.toLowerCase(), 'active_games');
             const docRef = await addDoc(gamesRef, {
                 type: 'unlock_the_night',
@@ -159,7 +166,9 @@ const GameHub = ({
                 totalLocks: 3,
                 unlockedCount: 0,
                 turn: 'setup',
-                currentTurn: role
+                currentTurn: role,
+                hisFcmToken: coupleData.hisFcmToken || null,
+                hersFcmToken: coupleData.hersFcmToken || null
             });
             setCurrentGameId(docRef.id);
         } catch (err) {
