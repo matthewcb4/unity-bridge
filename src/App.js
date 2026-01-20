@@ -971,7 +971,12 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
 
     // --- RENDERS ---
 
-    if (!app) return <div className="p-10 text-center font-sans">Connecting to your database...</div>;
+    if (!app) return (
+        <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-rose-50 via-purple-50 to-indigo-100 font-sans">
+            <div className="text-6xl animate-pulse">💕</div>
+            <p className="mt-4 text-slate-500 font-medium animate-pulse">Connecting...</p>
+        </div>
+    );
 
     if (authError) {
         return (
@@ -1070,13 +1075,12 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         disabled={!coupleCode}
                         className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-blue-50 border-blue-100'}`}
                     >
-                        <span className="text-2xl">👨</span>
-                        <input
-                            value={husbandName}
-                            onChange={(e) => { e.stopPropagation(); setHusbandName(e.target.value); }}
-                            placeholder="Dad's Name"
-                            className="bg-transparent text-[10px] font-bold text-blue-600 text-center w-full outline-none placeholder:text-blue-300"
-                        />
+                        {husbandPhoto ? (
+                            <img src={husbandPhoto} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-blue-200" />
+                        ) : (
+                            <span className="text-2xl">👨</span>
+                        )}
+                        <span className="text-[10px] font-bold text-blue-600">{husbandName || "Dad"}</span>
                     </button>
                     <button
                         onClick={() => {
@@ -1093,13 +1097,12 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         disabled={!coupleCode}
                         className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-rose-50 border-rose-100'}`}
                     >
-                        <span className="text-2xl">👩</span>
-                        <input
-                            value={wifeName}
-                            onChange={(e) => { e.stopPropagation(); setWifeName(e.target.value); }}
-                            placeholder="Mom's Name"
-                            className="bg-transparent text-[10px] font-bold text-rose-600 text-center w-full outline-none placeholder:text-rose-300"
-                        />
+                        {wifePhoto ? (
+                            <img src={wifePhoto} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-rose-200" />
+                        ) : (
+                            <span className="text-2xl">👩</span>
+                        )}
+                        <span className="text-[10px] font-bold text-rose-600">{wifeName || "Mom"}</span>
                     </button>
                 </div>
 
@@ -1132,7 +1135,11 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                 disabled={!coupleCode}
                                 className={`p-3 border rounded-xl flex flex-col items-center gap-1 transition-all ${coupleCode ? 'active:scale-95' : 'opacity-50'} ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}
                             >
-                                <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                {kid.photoUrl ? (
+                                    <img src={kid.photoUrl} alt="" className="w-10 h-10 rounded-full object-cover border-2 border-purple-200" />
+                                ) : (
+                                    <span className="text-2xl">{kid.avatar || '🧒'}</span>
+                                )}
                                 <span className="text-[10px] font-bold text-purple-600">{kid.name}</span>
                             </button>
                         ))}
