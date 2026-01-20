@@ -237,18 +237,18 @@ const GameHub = ({
 
             {activeGame ? (
                 <div className="bg-white rounded-2xl shadow-xl border border-purple-100 px-1 py-2 space-y-2">
-                    <div className="flex justify-between items-start">
+                    <div className="flex justify-between items-center px-2 pb-2 border-b border-slate-100">
                         <button
                             onClick={() => setCurrentGameId(null)}
-                            className="text-xs font-bold text-slate-400 flex items-center gap-1"
+                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
                         >
-                            ← Back
+                            ← Exit Game
                         </button>
                         <button
                             onClick={() => deleteActiveGame(activeGame.id)}
-                            className="text-slate-300 hover:text-red-400"
+                            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
                         >
-                            <Trash2 className="w-4 h-4" />
+                            <Trash2 className="w-4 h-4" /> Delete
                         </button>
                     </div>
 

@@ -154,10 +154,14 @@ const FamilyGamesHub = ({
     if (activeGame) {
         return (
             <div className="p-2 space-y-3 animate-in slide-in-from-bottom-4">
-                <div className="flex justify-between items-center">
-                    <button onClick={() => setCurrentFamilyGameId(null)} className="text-xs font-bold text-slate-400">← Lobby</button>
-                    <p className="text-[10px] font-bold text-purple-500 uppercase">{activeGame.type.replace(/_/g, ' ')}</p>
-                    <div className="w-8" /> {/* spacer */}
+                <div className="flex justify-between items-center pb-2 border-b border-slate-200">
+                    <button
+                        onClick={() => setCurrentFamilyGameId(null)}
+                        className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
+                    >
+                        ← Exit Game
+                    </button>
+                    <p className="text-xs font-bold text-purple-500 uppercase bg-purple-50 px-3 py-1 rounded-full">{activeGame.type.replace(/_/g, ' ')}</p>
                 </div>
 
                 {activeGame.type === 'word_scramble' && (
