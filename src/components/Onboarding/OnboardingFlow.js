@@ -14,13 +14,17 @@ const OnboardingFlow = ({
     onComplete,
     saveSettings,
     requestNotificationPermission,
-    darkMode = false
+    darkMode = false,
+    initialHusbandName = '',
+    initialWifeName = '',
+    initialHisLoveLanguage = '',
+    initialHerLoveLanguage = ''
 }) => {
     const [step, setStep] = useState(0);
-    const [husbandName, setHusbandName] = useState('');
-    const [wifeName, setWifeName] = useState('');
-    const [hisLoveLanguage, setHisLoveLanguage] = useState('');
-    const [herLoveLanguage, setHerLoveLanguage] = useState('');
+    const [husbandName, setHusbandName] = useState(initialHusbandName);
+    const [wifeName, setWifeName] = useState(initialWifeName);
+    const [hisLoveLanguage, setHisLoveLanguage] = useState(initialHisLoveLanguage);
+    const [herLoveLanguage, setHerLoveLanguage] = useState(initialHerLoveLanguage);
     const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
     const steps = [
