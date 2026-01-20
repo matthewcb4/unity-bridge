@@ -995,7 +995,10 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 coupleCode={coupleCode}
                 onComplete={() => {
                     setShowOnboarding(false);
-                    toast.success('Settings updated! 💕');
+                    setView('home');  // Return to home screen to select hub
+                    setRole(null);    // Clear any auto-selected role
+                    localStorage.removeItem('user_role');
+                    toast.success('Setup complete! Choose your hub below 💕');
                 }}
                 saveSettings={saveSettings}
                 requestNotificationPermission={requestNotificationPermission}
