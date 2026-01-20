@@ -68,7 +68,16 @@ const WordScramble = ({
             </div>
             {isFamilyGame && <p className="col-span-2 text-[9px] text-slate-400 text-center">First to {game.targetScore} points wins!</p>}
 
-            {(!isFamilyGame || isMyTurn) && (
+            {/* Turn indicator */}
+            {!isMyTurn && (
+                <div className={`p-3 rounded-xl text-center ${darkMode ? 'bg-slate-700' : 'bg-amber-50 border border-amber-200'}`}>
+                    <p className={`text-xs font-bold italic ${darkMode ? 'text-amber-400' : 'text-amber-600'}`}>
+                        ⏳ Waiting for {isFamilyGame ? "opponent's" : (myId === 'his' ? wifeName : husbandName) + "'s"} turn...
+                    </p>
+                </div>
+            )}
+
+            {isMyTurn && (
                 <form onSubmit={handleSubmit} className="flex gap-2">
                     <input
                         type="text"
@@ -88,12 +97,6 @@ const WordScramble = ({
                         Guess
                     </button>
                 </form>
-            )}
-
-            {isFamilyGame && !isMyTurn && (
-                <div className="p-3 bg-slate-100 rounded-xl text-center">
-                    <p className="text-xs font-bold text-slate-500 italic">Waiting for opponent's turn...</p>
-                </div>
             )}
         </div>
     );
