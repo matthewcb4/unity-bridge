@@ -25,6 +25,7 @@ import FamilyGamesHub from './features/games/FamilyGamesHub';
 import { JOURNAL_TYPES, saveToJournal, deleteFromJournal, updateJournalEntry, exportJournalData } from './features/journaling/journalLogic';
 import { requestNotificationPermission, sendPushNotification } from './features/notifications/notificationLogic';
 import { useToast } from './components/Toast/ToastContext';
+import OnboardingFlow from './components/Onboarding/OnboardingFlow';
 
 // --- CONFIGURATION ---
 const FIREBASE_CONFIG = {
@@ -204,6 +205,13 @@ const App = () => {
 
     // Toast notifications
     const toast = useToast();
+
+    // Onboarding flow
+    const [showOnboarding, setShowOnboarding] = useState(() => {
+        // Show onboarding if user has a couple code but hasn't completed setup
+        const onboardingComplete = localStorage.getItem('onboarding_complete');
+        return !onboardingComplete;
+    });
 
     // Helper: Get current player ID (kid ID or parent role)
     const getCurrentPlayerId = () => currentKid ? currentKid.id : role;
@@ -977,6 +985,22 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                 </div>
                 <button onClick={() => window.location.reload()} className="mt-6 bg-red-600 text-white py-3 px-6 rounded-xl font-bold">Try Again</button>
             </div>
+        );
+    }
+
+    // Show onboarding for new users who have entered a couple code but haven't set up names
+    if (showOnboarding && coupleCode && user && !husbandName && !wifeName) {
+        return (
+            <OnboardingFlow
+                coupleCode={coupleCode}
+                onComplete={() => {
+                    setShowOnboarding(false);
+                    toast.success('Welcome to Unity Bridge! 💕');
+                }}
+                saveSettings={saveSettings}
+                requestNotificationPermission={requestNotificationPermission}
+                darkMode={darkMode}
+            />
         );
     }
 
