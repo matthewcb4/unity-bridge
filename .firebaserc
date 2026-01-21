@@ -1,5 +1,7 @@
 {
   "projects": {
     "default": "unity-bridge-45617"
-  }
+  },
+  "targets": {},
+  "etags": {}
 }
