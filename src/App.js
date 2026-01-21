@@ -113,6 +113,7 @@ const App = () => {
     const [wifePetName, setWifePetName] = useState('');
     const [husbandPetName, setHusbandPetName] = useState('');
     const [coupleCode, setCoupleCode] = useState(localStorage.getItem('family_code') || '');
+    const [coupleCodeInput, setCoupleCodeInput] = useState(localStorage.getItem('family_code') || ''); // Separate input state
 
     // Session-based authentication status (resets on tab close)
     const [isAuthenticated, setIsAuthenticated] = useState(sessionStorage.getItem('is_authenticated') === 'true');
@@ -1046,12 +1047,25 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                         <Lock className="w-3 h-3" /> Family Code
                     </label>
                     <input
-                        value={coupleCode}
-                        onChange={(e) => { setCoupleCode(e.target.value); }}
+                        value={coupleCodeInput}
+                        onChange={(e) => setCoupleCodeInput(e.target.value)}
+                        onBlur={() => {
+                            if (coupleCodeInput.trim() && coupleCodeInput !== coupleCode) {
+                                setCoupleCode(coupleCodeInput.trim());
+                                localStorage.setItem('family_code', coupleCodeInput.trim());
+                            }
+                        }}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' && coupleCodeInput.trim()) {
+                                setCoupleCode(coupleCodeInput.trim());
+                                localStorage.setItem('family_code', coupleCodeInput.trim());
+                                e.target.blur();
+                            }
+                        }}
                         placeholder="e.g. smith"
                         className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-wider ${darkMode ? 'bg-slate-700 border-slate-600 text-slate-200' : 'bg-purple-50 border-purple-100 focus:border-purple-300'}`}
                     />
-                    <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Enter your family access code</p>
+                    <p className={`text-[8px] text-center ${darkMode ? 'text-slate-500' : 'text-slate-400'}`}>Tap outside or press Enter to connect</p>
                 </div>
             </div>
 
