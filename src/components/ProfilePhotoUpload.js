@@ -126,16 +126,19 @@ const ProfilePhotoUpload = ({
 
             console.log('Photo uploaded:', downloadUrl);
 
-            if (onPhotoChange) {
-                await onPhotoChange(downloadUrl);
+            // Call the callback without await (might not be async)
+            try {
+                onPhotoChange && onPhotoChange(downloadUrl);
+            } catch (e) {
+                console.error('Callback error:', e);
             }
 
             setPreviewUrl(null);
+            setUploading(false);
         } catch (error) {
             console.error('Error uploading photo:', error);
             setError('Upload failed. Try again.');
             setPreviewUrl(null);
-        } finally {
             setUploading(false);
         }
     };
