@@ -52,16 +52,41 @@ const FamilyGamesHub = ({
     const handleWordScrambleSubmit = async (gameId, answer) => {
         const game = familyActiveGames.find(g => g.id === gameId);
         if (!game) return;
-        if (answer.toUpperCase().trim() === game.word) {
-            const newScore = (game.players[getMyId()]?.score || 0) + 1;
-            const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'SMILE', 'FRIENDS'];
+
+        const myId = getMyId();
+        const isCorrect = answer.toUpperCase().trim() === game.word;
+        const nextTurn = game.opponentId === myId ? game.createdBy : game.opponentId;
+
+        if (isCorrect) {
+            const newScore = (game.players[myId]?.score || 0) + 1;
+            const targetScore = game.targetScore || 10;
+
+            if (newScore >= targetScore) {
+                // Game won!
+                await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
+                    phase: 'completed',
+                    winner: myId,
+                    [`players.${myId}.score`]: newScore
+                });
+                alert(`🏆 You won with ${newScore} points!`);
+                setCurrentFamilyGameId(null);
+                return;
+            }
+
+            // Correct - add point and give new word
+            const words = ['FAMILY', 'TOGETHER', 'HAPPY', 'LOVE', 'GAMES', 'SMILE', 'FRIENDS', 'LAUGH'];
             const newWord = words[Math.floor(Math.random() * words.length)];
 
             await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
-                [`players.${getMyId()}.score`]: newScore,
+                [`players.${myId}.score`]: newScore,
                 word: newWord,
                 scrambled: newWord.split('').sort(() => Math.random() - 0.5).join(''),
-                currentTurn: game.opponentId === getMyId() ? game.createdBy : game.opponentId
+                currentTurn: nextTurn
+            });
+        } else {
+            // Wrong - just switch turns
+            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'family_games', gameId), {
+                currentTurn: nextTurn
             });
         }
     };

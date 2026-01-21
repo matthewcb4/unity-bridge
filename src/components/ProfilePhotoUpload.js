@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Camera, Image as ImageIcon, X, User, Loader2 } from 'lucide-react';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
@@ -23,19 +24,22 @@ const ProfilePhotoUpload = ({
         lg: 'w-28 h-28'
     };
 
-    const handleOpenPicker = () => {
+    const handleOpenPicker = (e) => {
+        e.stopPropagation();
         setShowPicker(true);
         setError(null);
     };
 
-    const handleCameraClick = () => {
+    const handleCameraClick = (e) => {
+        e.stopPropagation();
         setShowPicker(false);
-        cameraInputRef.current?.click();
+        setTimeout(() => cameraInputRef.current?.click(), 100);
     };
 
-    const handleGalleryClick = () => {
+    const handleGalleryClick = (e) => {
+        e.stopPropagation();
         setShowPicker(false);
-        galleryInputRef.current?.click();
+        setTimeout(() => galleryInputRef.current?.click(), 100);
     };
 
     const handleFileSelect = async (e) => {
@@ -84,7 +88,7 @@ const ProfilePhotoUpload = ({
             setPreviewUrl(null);
         } catch (error) {
             console.error('Error uploading photo:', error);
-            setError('Upload failed. Check Firebase Storage rules.');
+            setError('Upload failed. Check Storage rules.');
             setPreviewUrl(null);
         } finally {
             setUploading(false);
@@ -93,10 +97,67 @@ const ProfilePhotoUpload = ({
 
     const displayUrl = previewUrl || currentPhotoUrl;
 
+    // Picker Modal - use Portal to render at document root
+    const PickerModal = () => {
+        if (!showPicker) return null;
+
+        return createPortal(
+            <div
+                className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+                onClick={() => setShowPicker(false)}
+            >
+                <div
+                    className={`w-72 p-4 rounded-3xl shadow-2xl space-y-3 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
+                    onClick={e => e.stopPropagation()}
+                >
+                    <div className="flex items-center justify-between">
+                        <h3 className={`font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Choose Photo</h3>
+                        <button
+                            onClick={() => setShowPicker(false)}
+                            className={`p-1 rounded-full ${darkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-400 hover:bg-slate-100'}`}
+                        >
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <button
+                        onClick={handleCameraClick}
+                        className={`w-full p-4 rounded-2xl flex items-center gap-3 transition-all active:scale-95 ${darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-rose-50 hover:bg-rose-100'
+                            }`}
+                    >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${darkMode ? 'bg-rose-900' : 'bg-rose-500'}`}>
+                            <Camera className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left">
+                            <p className={`font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Take Photo</p>
+                            <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Use your camera</p>
+                        </div>
+                    </button>
+
+                    <button
+                        onClick={handleGalleryClick}
+                        className={`w-full p-4 rounded-2xl flex items-center gap-3 transition-all active:scale-95 ${darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-purple-50 hover:bg-purple-100'
+                            }`}
+                    >
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${darkMode ? 'bg-purple-900' : 'bg-purple-500'}`}>
+                            <ImageIcon className="w-5 h-5 text-white" />
+                        </div>
+                        <div className="text-left">
+                            <p className={`font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Choose from Gallery</p>
+                            <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Pick existing photo</p>
+                        </div>
+                    </button>
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
     return (
         <>
             <div className="relative inline-block">
                 <button
+                    type="button"
                     onClick={handleOpenPicker}
                     disabled={uploading}
                     className={`${sizeClasses[size]} rounded-full overflow-hidden border-4 transition-all hover:scale-105 active:scale-95 ${darkMode
@@ -136,74 +197,26 @@ const ProfilePhotoUpload = ({
                     <p className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] text-red-500 whitespace-nowrap">{error}</p>
                 )}
 
-                {/* Hidden file inputs */}
-                <input
-                    ref={cameraInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                />
-                <input
-                    ref={galleryInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                />
+                {/* Hidden file inputs - outside button to avoid bubbling issues */}
             </div>
 
-            {/* Picker Modal */}
-            {showPicker && (
-                <div
-                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
-                    onClick={() => setShowPicker(false)}
-                >
-                    <div
-                        className={`w-72 p-4 rounded-3xl shadow-2xl space-y-3 ${darkMode ? 'bg-slate-800' : 'bg-white'}`}
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <div className="flex items-center justify-between">
-                            <h3 className={`font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>Choose Photo</h3>
-                            <button
-                                onClick={() => setShowPicker(false)}
-                                className={`p-1 rounded-full ${darkMode ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-400 hover:bg-slate-100'}`}
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
+            <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={handleFileSelect}
+                className="hidden"
+            />
+            <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+            />
 
-                        <button
-                            onClick={handleCameraClick}
-                            className={`w-full p-4 rounded-2xl flex items-center gap-3 transition-all active:scale-95 ${darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-rose-50 hover:bg-rose-100'
-                                }`}
-                        >
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${darkMode ? 'bg-rose-900' : 'bg-rose-500'}`}>
-                                <Camera className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="text-left">
-                                <p className={`font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Take Photo</p>
-                                <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Use your camera</p>
-                            </div>
-                        </button>
-
-                        <button
-                            onClick={handleGalleryClick}
-                            className={`w-full p-4 rounded-2xl flex items-center gap-3 transition-all active:scale-95 ${darkMode ? 'bg-slate-700 hover:bg-slate-600' : 'bg-purple-50 hover:bg-purple-100'
-                                }`}
-                        >
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${darkMode ? 'bg-purple-900' : 'bg-purple-500'}`}>
-                                <ImageIcon className="w-5 h-5 text-white" />
-                            </div>
-                            <div className="text-left">
-                                <p className={`font-bold ${darkMode ? 'text-slate-200' : 'text-slate-700'}`}>Choose from Gallery</p>
-                                <p className={`text-[10px] ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Pick existing photo</p>
-                            </div>
-                        </button>
-                    </div>
-                </div>
-            )}
+            <PickerModal />
         </>
     );
 };
