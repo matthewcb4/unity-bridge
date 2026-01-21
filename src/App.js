@@ -322,6 +322,12 @@ const App = () => {
                 if (data.wifeName) setWifeName(data.wifeName);
                 if (data.husbandPhoto) setHusbandPhoto(data.husbandPhoto);
                 if (data.wifePhoto) setWifePhoto(data.wifePhoto);
+
+                // Auto-complete onboarding on new devices if names already exist
+                if (data.husbandName && data.wifeName && !localStorage.getItem('onboarding_complete')) {
+                    localStorage.setItem('onboarding_complete', 'true');
+                    setShowOnboarding(false);
+                }
             }
         }, (err) => console.error("Settings Sync Error:", err));
 
