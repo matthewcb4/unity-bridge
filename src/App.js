@@ -648,10 +648,15 @@ Return ONLY valid JSON, no other text.`;
 
     // Save shared settings to Firestore (love languages and names)
     const saveSettings = async (updates) => {
-        if (!coupleCode || !db) return;
+        console.log('saveSettings called with:', updates, 'coupleCode:', coupleCode);
+        if (!coupleCode || !db) {
+            console.error('saveSettings failed: coupleCode or db is null', { coupleCode, db: !!db });
+            return;
+        }
         try {
             const settingsRef = doc(db, 'couples', coupleCode.toLowerCase(), 'config', 'settings');
             await setDoc(settingsRef, updates, { merge: true });
+            console.log('saveSettings SUCCESS for:', updates);
         } catch (err) {
             console.error('Settings save error:', err);
         }
