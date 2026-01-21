@@ -42,45 +42,90 @@ const ProfilePhotoUpload = ({
         setTimeout(() => galleryInputRef.current?.click(), 100);
     };
 
+    // Compress image before upload
+    const compressImage = (file, maxSize = 400, quality = 0.7) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Calculate new dimensions (max 400px on longest side)
+                    if (width > height) {
+                        if (width > maxSize) {
+                            height = Math.round((height * maxSize) / width);
+                            width = maxSize;
+                        }
+                    } else {
+                        if (height > maxSize) {
+                            width = Math.round((width * maxSize) / height);
+                            height = maxSize;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob(
+                        (blob) => {
+                            if (blob) {
+                                console.log(`Compressed: ${(file.size / 1024).toFixed(1)}KB → ${(blob.size / 1024).toFixed(1)}KB`);
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Compression failed'));
+                            }
+                        },
+                        'image/jpeg',
+                        quality
+                    );
+                };
+                img.onerror = reject;
+                img.src = e.target.result;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
     const handleFileSelect = async (e) => {
         const file = e.target.files?.[0];
         if (!file) return;
 
-        // Reset input so same file can be selected again
         e.target.value = '';
 
-        // Validate file type
         if (!file.type.startsWith('image/')) {
             setError('Please select an image file');
             return;
         }
 
-        // Validate file size (max 5MB)
-        if (file.size > 5 * 1024 * 1024) {
-            setError('Image must be less than 5MB');
-            return;
-        }
-
         setError(null);
-
-        // Create preview
-        const reader = new FileReader();
-        reader.onloadend = () => setPreviewUrl(reader.result);
-        reader.readAsDataURL(file);
-
-        // Upload to Firebase Storage
         setUploading(true);
+
         try {
+            // Compress image first (max 400px, 70% quality)
+            const compressedBlob = await compressImage(file, 400, 0.7);
+
+            // Preview from compressed
+            const previewReader = new FileReader();
+            previewReader.onloadend = () => setPreviewUrl(previewReader.result);
+            previewReader.readAsDataURL(compressedBlob);
+
+            // Upload compressed image
             const storage = getStorage();
             const fileName = `profile_photos/${profileType}_${profileId}_${Date.now()}.jpg`;
             const storageRef = ref(storage, fileName);
 
-            await uploadBytes(storageRef, file);
+            await uploadBytes(storageRef, compressedBlob);
             const downloadUrl = await getDownloadURL(storageRef);
 
-            console.log('Photo uploaded successfully:', downloadUrl);
+            console.log('Photo uploaded:', downloadUrl);
 
-            // Call the callback to save to Firestore
             if (onPhotoChange) {
                 await onPhotoChange(downloadUrl);
             }
@@ -88,7 +133,7 @@ const ProfilePhotoUpload = ({
             setPreviewUrl(null);
         } catch (error) {
             console.error('Error uploading photo:', error);
-            setError('Upload failed. Check Storage rules.');
+            setError('Upload failed. Try again.');
             setPreviewUrl(null);
         } finally {
             setUploading(false);
