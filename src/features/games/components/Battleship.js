@@ -152,15 +152,19 @@ const Battleship = ({
                 await updateDoc(gameRef, updates);
 
                 // Add to history
-                const historyRef = collection(db, isFamilyGame ? 'families' : 'couples', coupleCode.toLowerCase(), isFamilyGame ? 'family_game_history' : 'games/history/items');
+                // Add to history
+                const historyRef = collection(db, isFamilyGame ? 'families' : 'couples', coupleCode.toLowerCase(), isFamilyGame ? 'family_game_history' : 'game_history');
                 await addDoc(historyRef, {
                     type: 'battleship',
-                    word: 'Battleship Victory',
-                    solvedBy: myId,
-                    solverName: myData.name || (myId === 'his' ? husbandName : wifeName),
-                    points: 50,
-                    completedAt: serverTimestamp(),
-                    wager: game.wager || ''
+                    winner: myId,
+                    winnerName: myData.name || (myId === 'his' ? husbandName : wifeName),
+                    loser: opponentId,
+                    loserName: opponentData.name || (opponentId === 'his' ? husbandName : wifeName),
+                    result: 'victory',
+                    wager: game.wager || '',
+                    hisScore: myId === 'his' ? (10 - countRemainingShips(newGrid)) : (10 - myData.shipsRemaining), // Hit count approximates score
+                    hersScore: myId === 'hers' ? (10 - countRemainingShips(newGrid)) : (10 - myData.shipsRemaining),
+                    completedAt: serverTimestamp()
                 });
 
                 alert('🎉 You won! All enemy ships destroyed!');

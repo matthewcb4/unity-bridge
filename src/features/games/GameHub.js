@@ -250,6 +250,20 @@ const GameHub = ({
             const currentScore = (game[scoreKey] || 0) + 1;
             if (currentScore >= (game.targetScore || 10)) {
                 // Win
+                const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'game_history');
+                await addDoc(historyRef, {
+                    type: game.type,
+                    winner: role,
+                    winnerName: role === 'his' ? husbandName : wifeName,
+                    loser: role === 'his' ? 'hers' : 'his',
+                    loserName: role === 'his' ? wifeName : husbandName,
+                    result: 'victory',
+                    wager: game.wager || '',
+                    hisScore: role === 'his' ? currentScore : (game.hisScore || 0),
+                    hersScore: role === 'his' ? (game.hersScore || 0) : currentScore,
+                    completedAt: serverTimestamp()
+                });
+
                 await deleteActiveGame(gameId);
                 toast.success(`🏆 Victory! You won with ${currentScore} points!`);
             } else {
