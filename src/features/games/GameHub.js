@@ -366,6 +366,21 @@ const GameHub = ({
                                 <span className="text-[9px] font-bold text-purple-700 uppercase">Unlock</span>
                             </button>
                         </div>
+
+                        {/* External Game Link */}
+                        <div className="pt-2 border-t border-slate-100">
+                            <p className="text-[9px] font-black text-slate-400 uppercase text-center tracking-widest mb-2">External Games</p>
+                            <button
+                                onClick={() => window.open('https://family-adventure-424587034330.us-west1.run.app', '_blank')}
+                                className="w-full p-3 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl flex items-center justify-center gap-2 hover:scale-105 transition-all"
+                            >
+                                <span className="text-xl">🏕️</span>
+                                <span className="text-xs font-bold text-emerald-600">Family Adventure</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </>
             )}

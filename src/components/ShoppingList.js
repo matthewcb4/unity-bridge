@@ -88,7 +88,7 @@ const ShoppingList = ({
         `;
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`, {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -298,14 +298,14 @@ const ShoppingList = ({
                                 <button
                                     onClick={() => toggleGroup(gIdx)}
                                     className={`w-full p-3 flex items-center justify-between text-left ${group.mealName === 'Uncategorized'
-                                            ? (darkMode ? 'bg-slate-600' : 'bg-slate-50')
-                                            : (darkMode ? 'bg-orange-900/30' : 'bg-orange-50')
+                                        ? (darkMode ? 'bg-slate-600' : 'bg-slate-50')
+                                        : (darkMode ? 'bg-orange-900/30' : 'bg-orange-50')
                                         }`}
                                 >
                                     <div className="flex items-center gap-2">
                                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${group.mealName === 'Uncategorized'
-                                                ? (darkMode ? 'bg-slate-500 text-slate-300' : 'bg-white text-slate-400')
-                                                : (darkMode ? 'bg-orange-700 text-orange-300' : 'bg-orange-100 text-orange-600')
+                                            ? (darkMode ? 'bg-slate-500 text-slate-300' : 'bg-white text-slate-400')
+                                            : (darkMode ? 'bg-orange-700 text-orange-300' : 'bg-orange-100 text-orange-600')
                                             }`}>
                                             {group.mealName === 'Uncategorized' ? <Package size={14} /> : <UtensilsCrossed size={14} />}
                                         </div>
@@ -325,8 +325,8 @@ const ShoppingList = ({
                                                 <button
                                                     onClick={() => toggleComplete(gIdx, iIdx)}
                                                     className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${ing.completed
-                                                            ? 'bg-green-500 border-green-500'
-                                                            : (darkMode ? 'border-slate-500' : 'border-slate-200')
+                                                        ? 'bg-green-500 border-green-500'
+                                                        : (darkMode ? 'border-slate-500' : 'border-slate-200')
                                                         }`}
                                                 >
                                                     {ing.completed && <Check size={12} className="text-white" />}
@@ -334,8 +334,8 @@ const ShoppingList = ({
 
                                                 <div className="flex-1 min-w-0">
                                                     <span className={`text-sm font-medium truncate block ${ing.completed
-                                                            ? (darkMode ? 'text-slate-500 line-through' : 'text-slate-300 line-through')
-                                                            : (darkMode ? 'text-slate-200' : 'text-slate-700')
+                                                        ? (darkMode ? 'text-slate-500 line-through' : 'text-slate-300 line-through')
+                                                        : (darkMode ? 'text-slate-200' : 'text-slate-700')
                                                         }`}>
                                                         {ing.name}
                                                     </span>
