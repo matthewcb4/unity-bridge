@@ -11,7 +11,7 @@ import {
     updateDoc,
     getDoc
 } from 'firebase/firestore';
-import { Gamepad2, Trash2 } from 'lucide-react';
+import { Gamepad2, Trash2, Flag } from 'lucide-react';
 import WordScramble from './components/WordScramble';
 import LetterLink from './components/LetterLink';
 import Battleship from './components/Battleship';
@@ -188,6 +188,26 @@ const GameHub = ({
         }
     };
 
+    const forfeitGame = async (gameId) => {
+        const game = activeGames.find(g => g.id === gameId);
+        if (!game) return;
+
+        const opponentRole = role === 'his' ? 'hers' : 'his';
+        const opponentName = role === 'his' ? wifeName : husbandName;
+
+        if (!window.confirm(`Are you sure you want to forfeit? ${opponentName} will win this game!`)) return;
+
+        try {
+            // Delete the game and show winner message
+            await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
+            if (currentGameId === gameId) setCurrentGameId(null);
+            toast.success(`🏆 ${opponentName} wins! You forfeited the game.`);
+        } catch (err) {
+            console.error('Forfeit game error:', err);
+            toast.error('Failed to forfeit game.');
+        }
+    };
+
     const handleWordScrambleSubmit = async (gameId, answer) => {
         const game = activeGames.find(g => g.id === gameId);
         if (!game) return;
@@ -244,12 +264,20 @@ const GameHub = ({
                         >
                             ← Exit Game
                         </button>
-                        <button
-                            onClick={() => deleteActiveGame(activeGame.id)}
-                            className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 rounded-xl text-sm font-bold flex items-center gap-2 transition-all"
-                        >
-                            <Trash2 className="w-4 h-4" /> Delete
-                        </button>
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => forfeitGame(activeGame.id)}
+                                className="px-3 py-2 bg-amber-50 hover:bg-amber-100 text-amber-600 hover:text-amber-700 rounded-xl text-sm font-bold flex items-center gap-1 transition-all"
+                            >
+                                <Flag className="w-4 h-4" /> Forfeit
+                            </button>
+                            <button
+                                onClick={() => deleteActiveGame(activeGame.id)}
+                                className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 rounded-xl text-sm font-bold flex items-center gap-1 transition-all"
+                            >
+                                <Trash2 className="w-4 h-4" /> Delete
+                            </button>
+                        </div>
                     </div>
 
                     {activeGame.type === 'word_scramble' && (
