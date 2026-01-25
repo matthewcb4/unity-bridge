@@ -88,7 +88,8 @@ const ShoppingList = ({
         `;
 
         try {
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`, {
+            // Using gemini-2.5-flash for vision/multimodal tasks (reading images)
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -103,8 +104,18 @@ const ShoppingList = ({
             });
 
             const data = await response.json();
+
+            // Check for API errors
+            if (data.error) {
+                console.error('Gemini API Error:', data.error);
+                throw new Error(data.error.message || 'API request failed');
+            }
+
             const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) throw new Error("Could not read text");
+            if (!text) {
+                console.error('No text in response:', data);
+                throw new Error("Could not read text from response");
+            }
 
             const result = JSON.parse(text);
             const newGroupsState = [...groups];
@@ -130,7 +141,7 @@ const ShoppingList = ({
             saveGroups(newGroupsState);
         } catch (err) {
             console.error('AI Error:', err);
-            setError("AI failed to read image. Please ensure the text is clear.");
+            setError(`AI failed: ${err.message || 'Please ensure the text is clear.'}`);
         } finally {
             setIsProcessing(false);
         }
