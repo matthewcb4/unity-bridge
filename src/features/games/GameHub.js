@@ -11,7 +11,7 @@ import {
     updateDoc,
     getDoc
 } from 'firebase/firestore';
-import { Gamepad2, Trash2, Flag } from 'lucide-react';
+import { Gamepad2, Trash2, Flag, Trophy, ChevronDown, ChevronUp } from 'lucide-react';
 import WordScramble from './components/WordScramble';
 import LetterLink from './components/LetterLink';
 import Battleship from './components/Battleship';
@@ -30,6 +30,8 @@ const GameHub = ({
 }) => {
     const toast = useToast();
     const [activeGames, setActiveGames] = useState([]);
+    const [gameHistory, setGameHistory] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
     const [currentGameId, setCurrentGameId] = useState(null);
     const [wager, setWager] = useState('');
     const [gameAnswer, setGameAnswer] = useState('');
@@ -43,6 +45,20 @@ const GameHub = ({
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const games = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             setActiveGames(games);
+        });
+
+        return () => unsubscribe();
+    }, [coupleCode, db]);
+
+    // --- Firestore Listener for Game History ---
+    useEffect(() => {
+        if (!coupleCode || !db) return;
+        const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'game_history');
+        const q = query(historyRef, orderBy('completedAt', 'desc'));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setGameHistory(history);
         });
 
         return () => unsubscribe();
@@ -194,11 +210,27 @@ const GameHub = ({
 
         const opponentRole = role === 'his' ? 'hers' : 'his';
         const opponentName = role === 'his' ? wifeName : husbandName;
+        const myName = role === 'his' ? husbandName : wifeName;
 
         if (!window.confirm(`Are you sure you want to forfeit? ${opponentName} will win this game!`)) return;
 
         try {
-            // Delete the game and show winner message
+            // Save to game history before deleting
+            const historyRef = collection(db, 'couples', coupleCode.toLowerCase(), 'game_history');
+            await addDoc(historyRef, {
+                type: game.type,
+                winner: opponentRole,
+                winnerName: opponentName,
+                loser: role,
+                loserName: myName,
+                result: 'forfeit',
+                wager: game.wager || '',
+                hisScore: game.players?.his?.score || game.hisScore || 0,
+                hersScore: game.players?.hers?.score || game.hersScore || 0,
+                completedAt: serverTimestamp()
+            });
+
+            // Delete the game
             await deleteDoc(doc(db, 'couples', coupleCode.toLowerCase(), 'active_games', gameId));
             if (currentGameId === gameId) setCurrentGameId(null);
             toast.success(`🏆 ${opponentName} wins! You forfeited the game.`);
@@ -410,6 +442,71 @@ const GameHub = ({
                             </button>
                         </div>
                     </div>
+
+                    {/* Game History Section */}
+                    {gameHistory.length > 0 && (
+                        <div className="bg-white rounded-2xl shadow-lg border border-amber-100 overflow-hidden">
+                            <button
+                                onClick={() => setShowHistory(!showHistory)}
+                                className="w-full p-4 flex items-center justify-between hover:bg-amber-50 transition-all"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Trophy className="w-5 h-5 text-amber-500" />
+                                    <span className="text-sm font-bold text-slate-700">Game History</span>
+                                    <span className="text-[10px] bg-amber-100 text-amber-600 px-2 py-0.5 rounded-full font-bold">{gameHistory.length}</span>
+                                </div>
+                                {showHistory ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                            </button>
+
+                            {showHistory && (
+                                <div className="border-t border-amber-100 max-h-64 overflow-y-auto">
+                                    {gameHistory.slice(0, 20).map(game => (
+                                        <div key={game.id} className="p-3 border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-lg">
+                                                        {game.type === 'word_scramble' ? '🔤' :
+                                                            game.type === 'letter_link' ? '🧩' :
+                                                                game.type === 'battleship' ? '⚓' :
+                                                                    game.type === 'unlock_the_night' ? '🗝️' : '🎮'}
+                                                    </span>
+                                                    <div>
+                                                        <p className="text-xs font-bold text-slate-700">
+                                                            {game.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                                        </p>
+                                                        <p className="text-[10px] text-slate-400">
+                                                            {game.completedAt?.toDate ?
+                                                                game.completedAt.toDate().toLocaleDateString() :
+                                                                'Recently'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="flex items-center gap-1">
+                                                        <Trophy className="w-3 h-3 text-amber-500" />
+                                                        <span className="text-xs font-bold text-amber-600">{game.winnerName}</span>
+                                                    </div>
+                                                    {game.result === 'forfeit' && (
+                                                        <span className="text-[9px] text-slate-400 italic">forfeit</span>
+                                                    )}
+                                                    {(game.hisScore > 0 || game.hersScore > 0) && (
+                                                        <p className="text-[9px] text-slate-400">
+                                                            {husbandName}: {game.hisScore || 0} | {wifeName}: {game.hersScore || 0}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            {game.wager && (
+                                                <div className="mt-1 text-[9px] text-purple-500 bg-purple-50 px-2 py-1 rounded-full inline-block">
+                                                    🎰 {game.wager}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </>
             )}
         </div>
