@@ -19,7 +19,7 @@ const ShoppingList = ({
     const [error, setError] = useState(null);
 
     // Gemini API Key (you can move this to env or config)
-    const apiKey = "AIzaSyBl1PGRTx8IO420pg04LVVv20Fqw7F2LNE";
+    const apiKey = "AIzaSyCwO4s-09dIt9b0uwFnfPV4tgeUM4eQ58E";
 
     // Listen to shopping list from Firestore
     useEffect(() => {
