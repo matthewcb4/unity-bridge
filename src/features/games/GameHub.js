@@ -462,7 +462,8 @@ const GameHub = ({
                                 <div className="border-t border-amber-100 max-h-64 overflow-y-auto">
                                     {gameHistory.slice(0, 20).map(game => (
                                         <div key={game.id} className="p-3 border-b border-slate-50 last:border-b-0 hover:bg-slate-50">
-                                            <div className="flex items-center justify-between">
+                                            {/* Game Type & Date Header */}
+                                            <div className="flex items-center justify-between mb-2">
                                                 <div className="flex items-center gap-2">
                                                     <span className="text-lg">
                                                         {game.type === 'word_scramble' ? '🔤' :
@@ -470,35 +471,63 @@ const GameHub = ({
                                                                 game.type === 'battleship' ? '⚓' :
                                                                     game.type === 'unlock_the_night' ? '🗝️' : '🎮'}
                                                     </span>
+                                                    <p className="text-xs font-bold text-slate-700">
+                                                        {game.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                                    </p>
+                                                </div>
+                                                <p className="text-[10px] text-slate-400">
+                                                    {game.completedAt?.toDate ?
+                                                        game.completedAt.toDate().toLocaleDateString() :
+                                                        'Recently'}
+                                                </p>
+                                            </div>
+
+                                            {/* Winner vs Loser Display */}
+                                            <div className="bg-gradient-to-r from-amber-50 to-slate-50 rounded-xl p-2 flex items-center justify-between">
+                                                {/* Winner */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center">
+                                                        <Trophy className="w-4 h-4 text-amber-500" />
+                                                    </div>
                                                     <div>
-                                                        <p className="text-xs font-bold text-slate-700">
-                                                            {game.type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                                        </p>
-                                                        <p className="text-[10px] text-slate-400">
-                                                            {game.completedAt?.toDate ?
-                                                                game.completedAt.toDate().toLocaleDateString() :
-                                                                'Recently'}
-                                                        </p>
+                                                        <p className="text-[9px] text-amber-600 font-bold uppercase">Winner</p>
+                                                        <p className="text-sm font-black text-slate-800">{game.winnerName}</p>
                                                     </div>
                                                 </div>
-                                                <div className="text-right">
-                                                    <div className="flex items-center gap-1">
-                                                        <Trophy className="w-3 h-3 text-amber-500" />
-                                                        <span className="text-xs font-bold text-amber-600">{game.winnerName}</span>
+
+                                                {/* Result Badge */}
+                                                <div className="text-center px-2">
+                                                    {game.result === 'forfeit' ? (
+                                                        <span className="bg-orange-100 text-orange-600 text-[9px] font-bold px-2 py-1 rounded-full">
+                                                            🏳️ Forfeit
+                                                        </span>
+                                                    ) : (game.hisScore > 0 || game.hersScore > 0) ? (
+                                                        <div className="text-center">
+                                                            <p className="text-[10px] font-black text-slate-600">
+                                                                {game.hisScore || 0} - {game.hersScore || 0}
+                                                            </p>
+                                                            <p className="text-[8px] text-slate-400">final score</p>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="bg-green-100 text-green-600 text-[9px] font-bold px-2 py-1 rounded-full">
+                                                            🎉 Victory
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* Loser */}
+                                                <div className="flex items-center gap-2">
+                                                    <div className="text-right">
+                                                        <p className="text-[9px] text-slate-400 font-bold uppercase">vs</p>
+                                                        <p className="text-sm font-bold text-slate-500">{game.loserName}</p>
                                                     </div>
-                                                    {game.result === 'forfeit' && (
-                                                        <span className="text-[9px] text-slate-400 italic">forfeit</span>
-                                                    )}
-                                                    {(game.hisScore > 0 || game.hersScore > 0) && (
-                                                        <p className="text-[9px] text-slate-400">
-                                                            {husbandName}: {game.hisScore || 0} | {wifeName}: {game.hersScore || 0}
-                                                        </p>
-                                                    )}
                                                 </div>
                                             </div>
+
+                                            {/* Wager */}
                                             {game.wager && (
-                                                <div className="mt-1 text-[9px] text-purple-500 bg-purple-50 px-2 py-1 rounded-full inline-block">
-                                                    🎰 {game.wager}
+                                                <div className="mt-2 text-[9px] text-purple-500 bg-purple-50 px-2 py-1 rounded-full inline-block">
+                                                    🎰 Wager: {game.wager}
                                                 </div>
                                             )}
                                         </div>
