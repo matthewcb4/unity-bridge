@@ -18,8 +18,7 @@ const ShoppingList = ({
     const [isProcessing, setIsProcessing] = useState(false);
     const [error, setError] = useState(null);
 
-    // Gemini API Key (you can move this to env or config)
-    const apiKey = "AIzaSyCwO4s-09dIt9b0uwFnfPV4tgeUM4eQ58E";
+    // Gemini API Key managed by backend Cloud Function
 
     // Listen to shopping list from Firestore
     useEffect(() => {
@@ -88,36 +87,31 @@ const ShoppingList = ({
         `;
 
         try {
-            // Using gemini-2.5-flash for vision/multimodal tasks (reading images)
-            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            // Updated to use secure backend Cloud Function
+            const response = await fetch('https://us-central1-unity-bridge-45617.cloudfunctions.net/callGemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    contents: [{
-                        parts: [
-                            { text: systemPrompt },
-                            { inlineData: { mimeType: "image/png", data: base64Image } }
-                        ]
-                    }],
-                    generationConfig: { responseMimeType: "application/json" }
+                    prompt: systemPrompt,
+                    image: base64Image
                 })
             });
 
+            if (!response.ok) {
+                const errorData = await response.json();
+                console.error("AI Error:", response.status, errorData);
+                throw new Error(errorData.error || 'Server error');
+            }
+
             const data = await response.json();
 
-            // Check for API errors
-            if (data.error) {
-                console.error('Gemini API Error:', data.error);
-                throw new Error(data.error.message || 'API request failed');
+            // Backend returns { result: { ...JSON object... } }
+            const result = data.result;
+
+            if (!result || !result.groups) {
+                throw new Error("Invalid response format from AI");
             }
 
-            const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (!text) {
-                console.error('No text in response:', data);
-                throw new Error("Could not read text from response");
-            }
-
-            const result = JSON.parse(text);
             const newGroupsState = [...groups];
 
             result.groups.forEach(newGroup => {

@@ -23,7 +23,7 @@ exports.callGemini = functions.https.onRequest((req, res) => {
         return;
     }
 
-    const { prompt } = req.body;
+    const { prompt, image } = req.body;
     if (!prompt) {
         res.status(400).json({ error: "Missing prompt" });
         return;
@@ -34,8 +34,23 @@ exports.callGemini = functions.https.onRequest((req, res) => {
         return;
     }
 
+    const parts = [{ text: prompt }];
+    if (image) {
+        // Expecting base64 string without data:image/png;base64, prefix if possible, 
+        // or cleaner to handle both. For now assuming sanitized base64.
+        // Google API expects raw base64.
+        parts.push({
+            inlineData: {
+                mimeType: "image/jpeg", // or "image/png" - Gemini is flexible usually, but best to be specific if known. 
+                // For simplicity assuming jpeg or making it client's responsibility? 
+                // Let's assume the client sends the data part.
+                data: image
+            }
+        });
+    }
+
     const postData = JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
+        contents: [{ parts }],
         generationConfig: { responseMimeType: "application/json" }
     });
 
