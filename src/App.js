@@ -1641,80 +1641,53 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                             </div>
                                         </div>
                                         {/* Insights Modal */}
+                                        {/* Insights Inline Display (Replaces Modal) */}
                                         {journalInsights && (
-                                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
-                                                <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
-                                                    {/* Modal Header */}
-                                                    <div className="p-6 bg-gradient-to-r from-purple-500 to-indigo-600 shrink-0">
-                                                        <div className="flex justify-between items-start">
-                                                            <div className="flex items-center gap-3">
-                                                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
-                                                                    <Sparkles className="w-6 h-6 text-white" />
-                                                                </div>
-                                                                <div>
-                                                                    <h3 className="text-xl font-black text-white italic tracking-tight">Relationship Insights</h3>
-                                                                    <p className="text-xs text-purple-100 font-medium">Personalized analysis just for you</p>
-                                                                </div>
-                                                            </div>
-                                                            <button
-                                                                onClick={() => setJournalInsights(null)}
-                                                                className="p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors"
-                                                            >
-                                                                <X className="w-5 h-5" />
-                                                            </button>
-                                                        </div>
+                                            <div className="p-4 bg-gradient-to-r from-purple-50 to-indigo-50 border border-purple-200 rounded-2xl space-y-3 mb-4 animate-in fade-in slide-in-from-top-4 duration-300">
+                                                <div className="flex justify-between items-start">
+                                                    <div className="flex items-center gap-2">
+                                                        <Sparkles className="w-4 h-4 text-purple-600" />
+                                                        <span className="text-[10px] font-black text-purple-600 uppercase">Relationship Insights</span>
                                                     </div>
+                                                    <button
+                                                        onClick={() => setJournalInsights(null)}
+                                                        className="text-slate-400 hover:text-slate-600"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </button>
+                                                </div>
 
-                                                    {/* Keep Scrollable Content */}
-                                                    <div className="p-6 overflow-y-auto space-y-6 flex-1">
-                                                        {/* Main Insight */}
-                                                        <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
-                                                            <p className="text-[10px] font-black uppercase text-purple-600 mb-2 flex items-center gap-2">
-                                                                <Zap className="w-3 h-3" /> Core Analysis
-                                                            </p>
-                                                            <p className="text-sm font-medium text-slate-700 leading-relaxed">
-                                                                {journalInsights.insights}
-                                                            </p>
-                                                        </div>
+                                                <div className="space-y-2">
+                                                    <p className="text-sm font-medium text-slate-700 leading-relaxed">
+                                                        {journalInsights.insights}
+                                                    </p>
 
-                                                        {/* Suggestions List */}
-                                                        <div className="space-y-3">
-                                                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">
-                                                                Recommended Actions
-                                                            </p>
-                                                            {journalInsights.suggestions?.map((suggestion, idx) => (
-                                                                <div key={idx} className="flex gap-3 p-4 bg-slate-50 hover:bg-white border hover:border-purple-200 rounded-2xl transition-all shadow-sm group">
-                                                                    <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
-                                                                        {idx + 1}
-                                                                    </div>
-                                                                    <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                                                    {journalInsights.suggestions && journalInsights.suggestions.length > 0 && (
+                                                        <div className="pt-2 border-t border-purple-100">
+                                                            <p className="text-[9px] font-bold text-slate-500 uppercase mb-1">Recommended Actions:</p>
+                                                            <ul className="space-y-1">
+                                                                {journalInsights.suggestions.map((suggestion, idx) => (
+                                                                    <li key={idx} className="flex items-start gap-2 text-xs text-slate-600">
+                                                                        <span className="text-purple-400 font-bold">•</span>
                                                                         {suggestion}
-                                                                    </p>
-                                                                </div>
-                                                            ))}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
                                                         </div>
-                                                    </div>
+                                                    )}
+                                                </div>
 
-                                                    {/* Footer Actions */}
-                                                    <div className="p-4 bg-slate-50 border-t border-slate-100 shrink-0 flex gap-3">
-                                                        <button
-                                                            onClick={() => setJournalInsights(null)}
-                                                            className="flex-1 py-3.5 rounded-xl font-bold text-xs bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
-                                                        >
-                                                            Close
-                                                        </button>
-                                                        <button
-                                                            onClick={() => {
-                                                                // Copy to clipboard
-                                                                const text = `💡 Insight: ${journalInsights.insights}\n\nActions:\n${journalInsights.suggestions?.map(s => `- ${s}`).join('\n')}`;
-                                                                copyToClipboard(text, 'insights-modal');
-                                                            }}
-                                                            className="flex-1 py-3.5 rounded-xl font-bold text-xs bg-purple-600 text-white shadow-lg shadow-purple-200 hover:bg-purple-700 active:scale-95 transition-all flex items-center justify-center gap-2"
-                                                        >
-                                                            <Copy className="w-4 h-4" />
-                                                            {copiedId === 'insights-modal' ? 'Copied!' : 'Save for Later'}
-                                                        </button>
-                                                    </div>
+                                                <div className="flex justify-end pt-1">
+                                                    <button
+                                                        onClick={() => {
+                                                            const text = `💡 Insight: ${journalInsights.insights}\n\nActions:\n${journalInsights.suggestions?.map(s => `- ${s}`).join('\n')}`;
+                                                            copyToClipboard(text, 'insights-card');
+                                                        }}
+                                                        className="text-[10px] font-bold text-purple-600 hover:text-purple-800 flex items-center gap-1"
+                                                    >
+                                                        <Copy className="w-3 h-3" />
+                                                        {copiedId === 'insights-card' ? 'Copied!' : 'Save for Later'}
+                                                    </button>
                                                 </div>
                                             </div>
                                         )}
