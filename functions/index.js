@@ -73,7 +73,9 @@ exports.callGemini = functions.https.onRequest((req, res) => {
                 if (result.error) {
                     res.status(apiRes.statusCode).json({ error: result.error.message });
                 } else if (result.candidates && result.candidates[0]) {
-                    const text = result.candidates[0].content.parts[0].text;
+                    let text = result.candidates[0].content.parts[0].text;
+                    // Sanitize Markdown code blocks if present
+                    text = text.replace(/```json\n?|```/g, '').trim();
                     res.json({ result: JSON.parse(text) });
                 } else {
                     res.status(500).json({ error: "No response from AI" });

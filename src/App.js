@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-    Heart, Flame, Sparkles, MessageCircle, Copy, Check, Share2,
+    Heart, Flame, Sparkles, MessageCircle, Copy, Check, Share2, X,
     RefreshCcw, Settings, BookOpen, ChevronRight, User, Gamepad2, Trophy,
     Loader2, ShieldCheck as ShieldIcon, Users, AlertCircle, Hand,
     Bell, Zap, Lock, Globe, Save, Trash2, Edit3, Send,
@@ -134,6 +134,9 @@ const App = () => {
     const [editableOutput, setEditableOutput] = useState(localStorage.getItem('talk_editable_output') || '');
     const [copiedId, setCopiedId] = useState(null);
     const [journalPrompt, setJournalPrompt] = useState(null);
+
+    // NEW: Journal Insights Modal State
+    const [journalInsights, setJournalInsights] = useState(null);
 
     // AI Enhancement States
     const [hisLoveLanguage, setHisLoveLanguage] = useState(localStorage.getItem('his_love_language') || 'Physical Touch');
@@ -741,9 +744,13 @@ Return ONLY valid JSON, no other text.`;
         const systemPrompt = `You are a relationship counselor. Based on these recent journal entries:\n${recentEntries}\n\nProvide personalized communication suggestions for talking with ${partnerName}. Return JSON: { "insights": "brief analysis of patterns", "suggestions": ["suggestion 1", "suggestion 2", "suggestion 3"] }`;
         const result = await callGemini(systemPrompt);
         if (result) {
-            toast.success(`💡 Insights: ${result.insights}`);
+            setJournalInsights(result);
         } else {
-            toast.error('Could not generate insights. Please try again.');
+            // Fallback: Show error in modal instead of toast
+            setJournalInsights({
+                insights: "I couldn't generate a personalized analysis right now. This might be due to a connection issue or the AI being busy.",
+                suggestions: ["Try again in a few moments", "Check your internet connection", "Write a few more entries"]
+            });
         }
         setIsGenerating(false);
     };
@@ -1633,25 +1640,233 @@ Return JSON: { "dates": [{"title": "short title", "description": "2 sentences de
                                                 </button>
                                             </div>
                                         </div>
+                                        {/* Insights Modal */}
+                                        {journalInsights && (
+                                            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in fade-in duration-200">
+                                                <div className="w-full max-w-lg bg-white rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-200">
+                                                    {/* Modal Header */}
+                                                    <div className="p-6 bg-gradient-to-r from-purple-500 to-indigo-600 shrink-0">
+                                                        <div className="flex justify-between items-start">
+                                                            <div className="flex items-center gap-3">
+                                                                <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center backdrop-blur-md">
+                                                                    <Sparkles className="w-6 h-6 text-white" />
+                                                                </div>
+                                                                <div>
+                                                                    <h3 className="text-xl font-black text-white italic tracking-tight">Relationship Insights</h3>
+                                                                    <p className="text-xs text-purple-100 font-medium">Personalized analysis just for you</p>
+                                                                </div>
+                                                            </div>
+                                                            <button
+                                                                onClick={() => setJournalInsights(null)}
+                                                                className="p-2 bg-white/10 hover:bg-white/20 rounded-xl text-white transition-colors"
+                                                            >
+                                                                <X className="w-5 h-5" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Keep Scrollable Content */}
+                                                    <div className="p-6 overflow-y-auto space-y-6 flex-1">
+                                                        {/* Main Insight */}
+                                                        <div className="bg-purple-50 p-5 rounded-2xl border border-purple-100">
+                                                            <p className="text-[10px] font-black uppercase text-purple-600 mb-2 flex items-center gap-2">
+                                                                <Zap className="w-3 h-3" /> Core Analysis
+                                                            </p>
+                                                            <p className="text-sm font-medium text-slate-700 leading-relaxed">
+                                                                {journalInsights.insights}
+                                                            </p>
+                                                        </div>
+
+                                                        {/* Suggestions List */}
+                                                        <div className="space-y-3">
+                                                            <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest ml-1">
+                                                                Recommended Actions
+                                                            </p>
+                                                            {journalInsights.suggestions?.map((suggestion, idx) => (
+                                                                <div key={idx} className="flex gap-3 p-4 bg-slate-50 hover:bg-white border hover:border-purple-200 rounded-2xl transition-all shadow-sm group">
+                                                                    <div className="w-6 h-6 rounded-full bg-purple-100 text-purple-600 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
+                                                                        {idx + 1}
+                                                                    </div>
+                                                                    <p className="text-xs font-medium text-slate-600 leading-relaxed">
+                                                                        {suggestion}
+                                                                    </p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Footer Actions */}
+                                                    <div className="p-4 bg-slate-50 border-t border-slate-100 shrink-0 flex gap-3">
+                                                        <button
+                                                            onClick={() => setJournalInsights(null)}
+                                                            className="flex-1 py-3.5 rounded-xl font-bold text-xs bg-slate-200 text-slate-600 hover:bg-slate-300 transition-colors"
+                                                        >
+                                                            Close
+                                                        </button>
+                                                        <button
+                                                            onClick={() => {
+                                                                // Copy to clipboard
+                                                                const text = `💡 Insight: ${journalInsights.insights}\n\nActions:\n${journalInsights.suggestions?.map(s => `- ${s}`).join('\n')}`;
+                                                                copyToClipboard(text, 'insights-modal');
+                                                            }}
+                                                            className="flex-1 py-3.5 rounded-xl font-bold text-xs bg-purple-600 text-white shadow-lg shadow-purple-200 hover:bg-purple-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+                                                        >
+                                                            <Copy className="w-4 h-4" />
+                                                            {copiedId === 'insights-modal' ? 'Copied!' : 'Save for Later'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
                                         {/* Weekly Summary Display */}
                                         {weeklySummary && (
                                             <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-2xl space-y-2">
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-[10px] font-black text-blue-600 uppercase">Weekly Summary</span>
-                                                    <span className="text-xl">{weeklySummary.mood === 'positive' || weeklySummary.mood === 'happy' ? '😊' : weeklySummary.mood === 'stressed' ? '😰' : '💭'}</span>
-                                                </div>
-                                                <p className="text-sm font-bold text-slate-700">Mood: {weeklySummary.mood}</p>
-                                                {weeklySummary.highlights && (
-                                                    <div>
-                                                        <p className="text-[9px] font-bold text-green-600 uppercase">Highlights:</p>
-                                                        <ul className="text-xs text-slate-600 list-disc pl-4">{weeklySummary.highlights.map((h, i) => <li key={i}>{h}</li>)}</ul>
-                                                    </div>
-                                                )}
                                                 {weeklySummary.encouragement && (
                                                     <p className="text-xs italic text-purple-600">{weeklySummary.encouragement}</p>
                                                 )}
                                             </div>
                                         )}
+                                        {/* Kid Manager Modal (Parents only) */}
+                                        {
+                                            showKidManager && (
+                                                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                                                    <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
+                                                        <div className="flex justify-between items-center">
+                                                            <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
+                                                            <button
+                                                                onClick={() => setShowKidManager(false)}
+                                                                className="text-slate-400 hover:text-slate-600 text-xl font-bold"
+                                                            >
+                                                                ✕
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Add New Kid Form */}
+                                                        <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
+                                                            <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
+                                                            <div className="space-y-2">
+                                                                <input
+                                                                    type="text"
+                                                                    id="kid-name-input"
+                                                                    placeholder="Kid's Name"
+                                                                    className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                                                                />
+                                                                <div className="grid grid-cols-6 gap-2">
+                                                                    {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
+                                                                        <button
+                                                                            key={emoji}
+                                                                            type="button"
+                                                                            onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
+                                                                            className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
+                                                                        >
+                                                                            {emoji}
+                                                                        </button>
+                                                                    ))}
+                                                                </div>
+                                                                <input
+                                                                    type="text"
+                                                                    id="kid-avatar-input"
+                                                                    defaultValue="🧒"
+                                                                    className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
+                                                                    readOnly
+                                                                />
+                                                                <input
+                                                                    type="password"
+                                                                    inputMode="numeric"
+                                                                    maxLength={4}
+                                                                    id="kid-pin-input"
+                                                                    placeholder="4-digit PIN"
+                                                                    className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
+                                                                />
+                                                                <button
+                                                                    onClick={() => {
+                                                                        const name = document.getElementById('kid-name-input').value.trim();
+                                                                        const avatar = document.getElementById('kid-avatar-input').value || '🧒';
+                                                                        const pin = document.getElementById('kid-pin-input').value;
+                                                                        if (!name) { alert('Please enter a name'); return; }
+                                                                        if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
+                                                                        addKidProfile(name, avatar, pin);
+                                                                        document.getElementById('kid-name-input').value = '';
+                                                                        document.getElementById('kid-avatar-input').value = '🧒';
+                                                                        document.getElementById('kid-pin-input').value = '';
+                                                                    }}
+                                                                    className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
+                                                                >
+                                                                    ➕ Add Kid
+                                                                </button>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Existing Kids */}
+                                                        {kidProfiles.length > 0 && (
+                                                            <div className="space-y-2">
+                                                                <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
+                                                                {kidProfiles.map(kid => (
+                                                                    <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
+                                                                        <div className="flex items-center gap-3">
+                                                                            <ProfilePhotoUpload
+                                                                                currentPhotoUrl={kid.photoUrl}
+                                                                                onPhotoChange={async (url) => {
+                                                                                    await updateKidProfile(kid.id, { photoUrl: url });
+                                                                                }}
+                                                                                profileId={kid.id}
+                                                                                profileType="kid"
+                                                                                darkMode={darkMode}
+                                                                                size="sm"
+                                                                            />
+                                                                            <div>
+                                                                                <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
+                                                                                <p className="text-[10px] text-slate-400">PIN: •••• | Tap photo to change</p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="flex items-center gap-2">
+                                                                            <button
+                                                                                onClick={() => {
+                                                                                    setShowKidManager(false);
+                                                                                    setCurrentKid(kid);
+                                                                                    setView('family_games');
+                                                                                    alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
+                                                                                }}
+                                                                                className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
+                                                                            >
+                                                                                <Gamepad2 className="w-4 h-4" />
+                                                                                <span className="text-[10px] font-bold">Play</span>
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={async () => {
+                                                                                    const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
+                                                                                    if (newPin && /^\d{4}$/.test(newPin)) {
+                                                                                        try {
+                                                                                            await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
+                                                                                            alert('PIN updated successfully! 🔒');
+                                                                                        } catch (err) {
+                                                                                            console.error(err);
+                                                                                            alert('Failed to update PIN.');
+                                                                                        }
+                                                                                    } else if (newPin !== null) {
+                                                                                        alert('Invalid PIN. Must be 4 digits.');
+                                                                                    }
+                                                                                }}
+                                                                                className="text-orange-400 hover:text-orange-600 p-2"
+                                                                                title="Reset PIN"
+                                                                            >
+                                                                                <Lock className="w-4 h-4" />
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={() => deleteKidProfile(kid.id, kid.name)}
+                                                                                className="text-red-400 hover:text-red-600 p-2"
+                                                                            >
+                                                                                <Trash2 className="w-4 h-4" />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         {/* Search and Filter */}
                                         <div className="flex flex-col sm:flex-row gap-2">
                                             <input
@@ -2862,168 +3077,32 @@ Generated by Unity Bridge - Relationship OS`;
                     }
 
                     {/* Kid Manager Modal (Parents only) */}
-                    {
-                        showKidManager && (
-                            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                                <div className={`w-full max-w-md p-6 rounded-3xl shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto ${darkMode ? 'bg-slate-800' : 'bg-white'}`}>
-                                    <div className="flex justify-between items-center">
-                                        <h3 className={`text-xl font-black ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>👨‍👩‍👧‍👦 Manage Kids</h3>
-                                        <button
-                                            onClick={() => setShowKidManager(false)}
-                                            className="text-slate-400 hover:text-slate-600 text-xl font-bold"
-                                        >
-                                            ✕
-                                        </button>
-                                    </div>
-
-                                    {/* Add New Kid Form */}
-                                    <div className={`p-4 rounded-2xl border space-y-3 ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-purple-50 border-purple-100'}`}>
-                                        <p className="text-[10px] font-black text-purple-600 uppercase">Add New Kid</p>
-                                        <div className="space-y-2">
-                                            <input
-                                                type="text"
-                                                id="kid-name-input"
-                                                placeholder="Kid's Name"
-                                                className={`w-full p-3 rounded-xl text-sm border outline-none ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                            />
-                                            <div className="grid grid-cols-6 gap-2">
-                                                {['🧒', '👦', '👧', '👶', '🧑', '👨‍🦱', '👩‍🦱', '🧔', '👸', '🤴', '🦸', '🧙'].map(emoji => (
-                                                    <button
-                                                        key={emoji}
-                                                        type="button"
-                                                        onClick={(e) => e.target.closest('.space-y-2').querySelector('#kid-avatar-input').value = emoji}
-                                                        className={`text-2xl p-2 rounded-lg border transition-all hover:scale-110 ${darkMode ? 'border-slate-500 hover:bg-slate-500' : 'border-slate-200 hover:bg-purple-100'}`}
-                                                    >
-                                                        {emoji}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <input
-                                                type="text"
-                                                id="kid-avatar-input"
-                                                defaultValue="🧒"
-                                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center text-2xl ${darkMode ? 'bg-slate-600 border-slate-500' : 'bg-white border-slate-200'}`}
-                                                readOnly
-                                            />
-                                            <input
-                                                type="password"
-                                                inputMode="numeric"
-                                                maxLength={4}
-                                                id="kid-pin-input"
-                                                placeholder="4-digit PIN"
-                                                className={`w-full p-3 rounded-xl text-sm border outline-none text-center font-mono tracking-widest ${darkMode ? 'bg-slate-600 border-slate-500 text-slate-200' : 'bg-white border-slate-200'}`}
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    const name = document.getElementById('kid-name-input').value.trim();
-                                                    const avatar = document.getElementById('kid-avatar-input').value || '🧒';
-                                                    const pin = document.getElementById('kid-pin-input').value;
-                                                    if (!name) { alert('Please enter a name'); return; }
-                                                    if (!pin || pin.length !== 4 || !/^\d{4}$/.test(pin)) { alert('Please enter a 4-digit PIN'); return; }
-                                                    addKidProfile(name, avatar, pin);
-                                                    document.getElementById('kid-name-input').value = '';
-                                                    document.getElementById('kid-avatar-input').value = '🧒';
-                                                    document.getElementById('kid-pin-input').value = '';
-                                                }}
-                                                className="w-full py-3 bg-purple-600 text-white font-bold text-sm rounded-xl"
-                                            >
-                                                ➕ Add Kid
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Existing Kids */}
-                                    {kidProfiles.length > 0 && (
-                                        <div className="space-y-2">
-                                            <p className={`text-[10px] font-black uppercase ${darkMode ? 'text-slate-400' : 'text-slate-500'}`}>Current Kids ({kidProfiles.length})</p>
-                                            {kidProfiles.map(kid => (
-                                                <div key={kid.id} className={`p-3 rounded-xl border flex items-center justify-between ${darkMode ? 'bg-slate-700 border-slate-600' : 'bg-slate-50 border-slate-200'}`}>
-                                                    <div className="flex items-center gap-3">
-                                                        <ProfilePhotoUpload
-                                                            currentPhotoUrl={kid.photoUrl}
-                                                            onPhotoChange={async (url) => {
-                                                                await updateKidProfile(kid.id, { photoUrl: url });
-                                                            }}
-                                                            profileId={kid.id}
-                                                            profileType="kid"
-                                                            darkMode={darkMode}
-                                                            size="sm"
-                                                        />
-                                                        <div>
-                                                            <p className={`font-bold text-sm ${darkMode ? 'text-slate-200' : 'text-slate-800'}`}>{kid.name}</p>
-                                                            <p className="text-[10px] text-slate-400">PIN: •••• | Tap photo to change</p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-2">
-                                                        <button
-                                                            onClick={() => {
-                                                                setShowKidManager(false);
-                                                                setCurrentKid(kid);
-                                                                setView('family_games');
-                                                                alert(`Ready to play games with ${kid.name}! Start a new game from the lobby.`);
-                                                            }}
-                                                            className="text-purple-500 hover:text-purple-700 p-2 bg-purple-50 rounded-lg flex items-center gap-1"
-                                                        >
-                                                            <Gamepad2 className="w-4 h-4" />
-                                                            <span className="text-[10px] font-bold">Play</span>
-                                                        </button>
-                                                        <button
-                                                            onClick={async () => {
-                                                                const newPin = prompt(`Enter new 4-digit PIN for ${kid.name}:`);
-                                                                if (newPin && /^\d{4}$/.test(newPin)) {
-                                                                    try {
-                                                                        await updateDoc(doc(db, 'families', coupleCode.toLowerCase(), 'kids', kid.id), { pin: newPin });
-                                                                        alert('PIN updated successfully! 🔒');
-                                                                    } catch (err) {
-                                                                        console.error(err);
-                                                                        alert('Failed to update PIN.');
-                                                                    }
-                                                                } else if (newPin !== null) {
-                                                                    alert('Invalid PIN. Must be 4 digits.');
-                                                                }
-                                                            }}
-                                                            className="text-orange-400 hover:text-orange-600 p-2"
-                                                            title="Reset PIN"
-                                                        >
-                                                            <Lock className="w-4 h-4" />
-                                                        </button>
-                                                        <button
-                                                            onClick={() => deleteKidProfile(kid.id, kid.name)}
-                                                            className="text-red-400 hover:text-red-600 p-2"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )
-                    }
+                        */}
+                    {/* showKidManager block commented out for debug */}
+                    {/* 
+                        )} 
+                        */}
                 </div>
-            </main >
-            {
-                view !== 'home' && portalMode !== 'kid' && (
-                    <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
-                        <button onClick={() => { setView('hub'); if (activeTab === 'settings' || activeTab === 'reminders') setActiveTab('affection'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
-                        </button>
-                        <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
-                            <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
-                        </button>
-                        <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
-                            <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
-                        </button>
-                        <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
-                            <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
-                        </button>
-                        <button onClick={() => { setView('nudge'); if (activeTab !== 'settings' && activeTab !== 'reminders') setActiveTab('reminders'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
-                            <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
-                        </button>
-                    </nav>
-                )
+            </main>
+            {view !== 'home' && portalMode !== 'kid' && (
+                <nav className="shrink-0 h-16 w-full bg-slate-900 flex items-center justify-around px-4 border-t border-white/5 z-50">
+                    <button onClick={() => { setView('hub'); if (activeTab === 'settings' || activeTab === 'reminders') setActiveTab('affection'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'hub' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <User className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Hub</span>
+                    </button>
+                    <button onClick={() => setView('bridge')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'bridge' || view === 'resolve' ? 'text-rose-500 scale-110' : 'text-slate-500'}`}>
+                        <ShieldIcon className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Bridge</span>
+                    </button>
+                    <button onClick={() => setView('games')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'games' ? 'text-purple-500 scale-110' : 'text-slate-500'}`}>
+                        <Gamepad2 className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Games</span>
+                    </button>
+                    <button onClick={() => setView('parent_hub')} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'parent_hub' ? 'text-blue-500 scale-110' : 'text-slate-500'}`}>
+                        <LayoutDashboard className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Dashboard</span>
+                    </button>
+                    <button onClick={() => { setView('nudge'); if (activeTab !== 'settings' && activeTab !== 'reminders') setActiveTab('reminders'); }} className={`flex flex-col items-center gap-0.5 transition-all ${view === 'nudge' ? 'text-amber-500 scale-110' : 'text-slate-500'}`}>
+                        <Bell className="w-6 h-6" /><span className="text-[8px] font-bold uppercase">Nudge</span>
+                    </button>
+                </nav>
+            )
             }
         </div >
     );
